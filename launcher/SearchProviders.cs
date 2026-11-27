@@ -15,7 +15,13 @@ internal interface ISearchProvider
     IEnumerable<ProviderResult> Search(SearchContext context);
 }
 
-internal sealed class AppSearchProvider(AppIndex index, WindowIdentity identity, Actions actions) : ISearchProvider
+/// <summary>Updates the cached data when the launcher opens.</summary>
+internal interface IRefreshableSearchProvider : ISearchProvider
+{
+    Task RefreshAsync(WmSnapshot snapshot);
+}
+
+internal sealed class AppSearchProvider(ShellIndex index, WindowIdentity identity, Actions actions) : ISearchProvider
 {
     private WmSnapshot? _previousSnapshot;
     private IReadOnlyList<AppEntry>? _previousApps;
@@ -125,6 +131,41 @@ internal sealed class WindowSearchProvider(WindowIdentity identity, Actions acti
                 FooterText = "↵ focus   Ctrl+↵ bring here   Ctrl+1‒9 or @N move to workspace (+Shift: stay)   Esc close",
                 Activate = (options, wm) => actions.ActivateWindow(window, options, wm),
             }, match, window);
+        }
+    }
+}
+
+internal sealed class FolderSearchProvider(ShellIndex index) : ISearchProvider
+{
+    public int Priority => 16;
+
+    public IEnumerable<ProviderResult> Search(SearchContext context)
+    {
+        if (context.Query.WorkspaceToken is not null) yield break;
+
+        foreach (var folder in index.Folders)
+        {
+            var id = $"folder:{folder.Id:D}";
+            var match = Fuzzy.Match(context.Query.Text, folder.Name);
+            if (context.IsHome ? !context.Recents.ContainsKey(id) : !match.Found) continue;
+
+            yield return new ProviderResult(new ResultItem
+            {
+                Id = id,
+                Title = folder.Name,
+                Subtitle = $"Folder · {folder.Path}",
+                Glyph = "\uE8B7",
+                IconPath = folder.Path,
+                IconFolderId = folder.Id,
+                UsageKey = id,
+                FooterText = "↵ open in File Explorer   Esc close",
+                SupportsWorkspaceTarget = false,
+                Activate = (_, _) =>
+                {
+                    Actions.OpenShellItem(folder.Path);
+                    return Task.CompletedTask;
+                },
+            }, match);
         }
     }
 }

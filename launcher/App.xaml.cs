@@ -24,7 +24,7 @@ public partial class App : Application
     private MainWindow? _window;
     private GlazeClient? _glaze;
     private UsageStore? _usage;
-    private AppIndex? _apps;
+    private ShellIndex? _shellIndex;
     private readonly CancellationTokenSource _cts = new();
 
     protected override void OnStartup(StartupEventArgs e)
@@ -70,17 +70,23 @@ public partial class App : Application
 
         var sta = new StaWorker("shell");
         var icons = new IconCache(sta);
-        var apps = _apps = new AppIndex(sta);
+        var shellIndex = _shellIndex = new ShellIndex(sta);
         _usage = new UsageStore();
         _usage.Load();
         _glaze = new GlazeClient();
         var identity = new WindowIdentity();
         var actions = new Actions(_glaze, _usage, identity);
         var search = new SearchEngine(
-            [new AppSearchProvider(apps, identity, actions), new WindowSearchProvider(identity, actions), new CommandSearchProvider(actions)],
+            [
+                new AppSearchProvider(shellIndex, identity, actions),
+                new WindowSearchProvider(identity, actions),
+                new BrowserTabSearchProvider(_glaze, identity, actions),
+                new FolderSearchProvider(shellIndex),
+                new CommandSearchProvider(actions),
+            ],
             _usage);
 
-        _window = new MainWindow(_glaze, apps, search, actions, icons);
+        _window = new MainWindow(_glaze, shellIndex, search, actions, icons);
         var hwnd = _window.Prepare();
         HwndSource.FromHwnd(hwnd)!.AddHook(WndProc);
         RegisterHotkeyWithRetry(hwnd);
@@ -88,8 +94,12 @@ public partial class App : Application
         actions.InternalCommand += cmd => Dispatcher.BeginInvoke(() => Execute(cmd));
 
         _glaze.Start();
-        // Index apps, then warm the icon cache so the first search already has icons.
-        _ = apps.Refresh().ContinueWith(_ => { foreach (var a in apps.Apps) icons.Request(a.IconPath); });
+        // Warm the icons in the background, with known folders ahead of the larger app catalog.
+        _ = shellIndex.Refresh().ContinueWith(_ =>
+        {
+            foreach (var folder in shellIndex.Folders) icons.Request(folder.Path, knownFolderId: folder.Id);
+            foreach (var app in shellIndex.Apps) icons.Request(app.IconPath);
+        });
         _ = Task.Run(() => PipeServer(_cts.Token));
 
         if (command is "show" or "toggle") _window.ShowLauncher();
@@ -149,7 +159,7 @@ public partial class App : Application
         }
     }
 
-    private Task ReindexAsync() => _apps?.Refresh() ?? Task.CompletedTask;
+    private Task ReindexAsync() => _shellIndex?.Refresh() ?? Task.CompletedTask;
 
     private void Quit()
     {

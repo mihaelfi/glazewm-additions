@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using Windows.Management.Deployment;
 
 namespace GlazeLauncher;
 
@@ -18,9 +21,11 @@ internal sealed class AppEntry
     public string UsageKey => "app:" + Id;
 }
 
-internal sealed class AppIndex(StaWorker worker)
+internal sealed class ShellIndex(StaWorker worker)
 {
     private static readonly TimeSpan Stale = TimeSpan.FromMinutes(2);
+    private static readonly Regex PackagedAppId = new(
+        @"^([a-z0-9.-]{3,50}_[a-hj-km-np-tv-z0-9]{13})!.+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     // Packaged apps whose process name can't be derived from the AppsFolder entry.
     private static readonly Dictionary<string, string> PackagedProcessAliases = new(StringComparer.OrdinalIgnoreCase)
@@ -35,6 +40,7 @@ internal sealed class AppIndex(StaWorker worker)
     private Task? _loading;
 
     public IReadOnlyList<AppEntry> Apps { get; private set; } = [];
+    public IReadOnlyList<KnownFolder> Folders { get; private set; } = [];
     public event Action? Changed;
 
     public Task RefreshIfStale()
@@ -55,22 +61,24 @@ internal sealed class AppIndex(StaWorker worker)
         var sw = Stopwatch.StartNew();
         try
         {
-            var apps = await worker.Invoke(Enumerate);
+            var (apps, folders) = await worker.Invoke(() => (EnumerateApps(), KnownFolder.Enumerate()));
             Apps = apps;
+            Folders = folders;
             _loadedAt = DateTime.UtcNow;
-            Log.Info($"indexed {apps.Count} apps in {sw.ElapsedMilliseconds} ms");
+            Log.Info($"indexed {apps.Count} apps and {folders.Count} folders in {sw.ElapsedMilliseconds} ms");
             Changed?.Invoke();
         }
         catch (Exception e)
         {
-            Log.Error("app index", e);
+            Log.Error("shell index", e);
         }
     }
 
-    private static List<AppEntry> Enumerate()
+    private static List<AppEntry> EnumerateApps()
     {
         var result = new List<AppEntry>(400);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var installedFamilies = GetInstalledPackageFamilies();
 
         var shellType = Type.GetTypeFromProgID("Shell.Application") ?? throw new InvalidOperationException("Shell.Application missing");
         dynamic shell = Activator.CreateInstance(shellType)!;
@@ -82,12 +90,16 @@ internal sealed class AppIndex(StaWorker worker)
                 string name = item.Name ?? "";
                 string id = item.Path ?? "";
                 if (name.Length == 0 || id.Length == 0) continue;
-                if (IsNoise(name, id)) continue;
-                if (!seen.Add(id)) continue;
+                if (IsNoise(name, id) || IsStoreListing(id)) continue;
+
+                var packaged = PackagedAppId.Match(id);
+                if (packaged.Success && installedFamilies is not null && !installedFamilies.Contains(packaged.Groups[1].Value))
+                    continue;
 
                 string? target = null;
                 try { target = item.ExtendedProperty("System.Link.TargetParsingPath") as string; } catch { }
                 if (string.IsNullOrWhiteSpace(target)) target = null;
+                if ((!packaged.Success && IsStoreListing(target)) || !seen.Add(id)) continue;
 
                 result.Add(new AppEntry { Name = name, Id = id, TargetPath = target, MatchIds = BuildMatchIds(name, id, target) });
             }
@@ -99,6 +111,35 @@ internal sealed class AppIndex(StaWorker worker)
 
         result.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
         return result;
+    }
+
+    private static HashSet<string>? GetInstalledPackageFamilies()
+    {
+        try
+        {
+            var installed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var manager = new PackageManager();
+            bool supportsStubStatus = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041);
+            foreach (var package in manager.FindPackagesForUserWithPackageTypes("", PackageTypes.Main | PackageTypes.Optional))
+            {
+                if (!supportsStubStatus || !package.IsStub) installed.Add(package.Id.FamilyName);
+            }
+            return installed;
+        }
+        catch (Exception error) when (error is COMException or UnauthorizedAccessException)
+        {
+            // Preserve search results if Windows cannot supply the current user's package inventory.
+            Log.Error("installed package inventory", error);
+            return null;
+        }
+    }
+
+    private static bool IsStoreListing(string? path)
+    {
+        if (!Uri.TryCreate(path, UriKind.Absolute, out var uri)) return false;
+        if (uri.Scheme == "ms-windows-store") return uri.Host.Equals("pdp", StringComparison.OrdinalIgnoreCase);
+        return uri.Scheme is "https" or "http" && uri.Host.Equals("apps.microsoft.com", StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.StartsWith("/detail/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsNoise(string name, string id)

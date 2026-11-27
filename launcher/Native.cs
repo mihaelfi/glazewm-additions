@@ -167,6 +167,10 @@ internal static class Native
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     public static extern int SHCreateItemFromParsingName(string path, IntPtr pbc, ref Guid riid, [MarshalAs(UnmanagedType.Interface)] out IShellItemImageFactory ppv);
 
+    [DllImport("shell32.dll", ExactSpelling = true)]
+    public static extern int SHGetKnownFolderItem(in Guid folderId, uint flags, IntPtr token, in Guid riid,
+        [MarshalAs(UnmanagedType.Interface)] out IShellItemImageFactory item);
+
     public const int SIIGBF_BIGGERSIZEOK = 0x1, SIIGBF_ICONONLY = 0x4;
 
     [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr h);

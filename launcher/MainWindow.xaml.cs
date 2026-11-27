@@ -14,7 +14,7 @@ public partial class MainWindow : Window
     private static readonly Duration OpenDuration = new(TimeSpan.FromMilliseconds(125));
 
     private readonly GlazeClient _glaze;
-    private readonly AppIndex _apps;
+    private readonly ShellIndex _shellIndex;
     private readonly SearchEngine _search;
     private readonly Actions _actions;
     private readonly IconCache _icons;
@@ -23,11 +23,12 @@ public partial class MainWindow : Window
     private IntPtr _hwnd;
     private IntPtr _previousForeground;
     private bool _hiding;
+    private long _openVersion;
 
-    internal MainWindow(GlazeClient glaze, AppIndex apps, SearchEngine search, Actions actions, IconCache icons)
+    internal MainWindow(GlazeClient glaze, ShellIndex shellIndex, SearchEngine search, Actions actions, IconCache icons)
     {
         _glaze = glaze;
-        _apps = apps;
+        _shellIndex = shellIndex;
         _search = search;
         _actions = actions;
         _icons = icons;
@@ -35,7 +36,7 @@ public partial class MainWindow : Window
 
         Deactivated += (_, _) => HideLauncher(restoreFocus: false);
         PreviewKeyDown += OnPreviewKeyDown;
-        _apps.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(keepSelection: true); });
+        _shellIndex.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(keepSelection: true); });
     }
 
     public IntPtr Handle => _hwnd;
@@ -74,8 +75,8 @@ public partial class MainWindow : Window
 
         // The snapshot is kept current by IPC events, but titles can change without an event:
         // refresh once in the background and re-render without moving the selection.
-        _ = RefreshSnapshotAsync();
-        _ = _apps.RefreshIfStale();
+        _ = RefreshSearchAsync(++_openVersion);
+        _ = _shellIndex.RefreshIfStale();
     }
 
     private void PlayOpenTransition()
@@ -95,20 +96,27 @@ public partial class MainWindow : Window
         });
     }
 
-    private async Task RefreshSnapshotAsync()
+    private async Task RefreshSearchAsync(long openVersion)
     {
-        if (!_glaze.IsConnected) return;
-        try
+        if (_glaze.IsConnected)
         {
-            var wm = await _glaze.RefreshAsync();
-            await Dispatcher.InvokeAsync(() =>
+            try
             {
-                if (!IsVisible) return;
+                var wm = await _glaze.RefreshAsync();
+                if (!IsVisible || openVersion != _openVersion) return;
                 _wm = wm;
                 Refresh(keepSelection: true);
-            });
+            }
+            catch (Exception e) { Log.Info($"snapshot refresh: {e.Message}"); }
         }
-        catch (Exception e) { Log.Info($"snapshot refresh: {e.Message}"); }
+
+        if (!IsVisible || openVersion != _openVersion) return;
+        try
+        {
+            await _search.RefreshAsync(_wm);
+            if (IsVisible && openVersion == _openVersion) Refresh(keepSelection: true);
+        }
+        catch (Exception e) { Log.Error("search provider refresh", e); }
     }
 
     public void HideLauncher(bool restoreFocus)
@@ -208,8 +216,8 @@ public partial class MainWindow : Window
     private void LoadIcon(ResultItem item)
     {
         if (item.IconPath is not { } path) return;
-        if (_icons.TryGet(path, out var cached)) { item.Icon = cached; return; }
-        _icons.Request(path, img => Dispatcher.BeginInvoke(DispatcherPriority.Background, () => item.Icon = img));
+        if (_icons.TryGet(path, out var cached, item.IconFolderId)) { item.Icon = cached; return; }
+        _icons.Request(path, img => Dispatcher.BeginInvoke(DispatcherPriority.Background, () => item.Icon = img), item.IconFolderId);
     }
 
     private void UpdateFooter()
@@ -270,6 +278,7 @@ public partial class MainWindow : Window
     private async Task ActivateSelected(string? targetToken, bool alternate, bool stay)
     {
         if (Results.SelectedItem is not ResultItem item) return;
+        if (targetToken is not null && !item.SupportsWorkspaceTarget) return;
         var wm = _wm;
         var target = targetToken is null ? null : wm.ResolveWorkspace(targetToken);
         HideLauncher(restoreFocus: false);

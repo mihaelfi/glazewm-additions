@@ -21,7 +21,9 @@ internal sealed class ResultItem : INotifyPropertyChanged
     public required string UsageKey { get; init; }
     public required Func<ActivateOptions, WmSnapshot, Task> Activate { get; init; }
     public required string FooterText { get; init; }
+    public bool SupportsWorkspaceTarget { get; init; } = true;
     public string? IconPath { get; init; }
+    public Guid? IconFolderId { get; init; }
     public int? SubtitleMatchStart { get; init; }
 
     private int[]? _titleMatches;
@@ -42,12 +44,17 @@ internal sealed class ResultItem : INotifyPropertyChanged
     public ImageSource? Icon
     {
         get => _icon;
-        set { _icon = value; PropertyChanged?.Invoke(this, new(nameof(Icon))); }
+        set
+        {
+            _icon = value;
+            PropertyChanged?.Invoke(this, new(nameof(Icon)));
+            PropertyChanged?.Invoke(this, new(nameof(GlyphVisibility)));
+        }
     }
 
     public Visibility SubtitleVisibility => Subtitle.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     public Visibility BadgeVisibility => Badge.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility GlyphVisibility => Glyph.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility GlyphVisibility => Icon is null && Glyph.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 }
@@ -167,6 +174,9 @@ internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, Usa
 {
     private const int MaxResults = 40;
     private const int MaxRecents = 6;
+
+    public Task RefreshAsync(WmSnapshot snapshot) => Task.WhenAll(
+        providers.OfType<IRefreshableSearchProvider>().Select(provider => provider.RefreshAsync(snapshot)));
 
     public List<ResultItem> Search(Query query, WmSnapshot wm)
     {

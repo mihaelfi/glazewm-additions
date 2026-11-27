@@ -44,7 +44,7 @@ internal sealed class Actions
         }
         catch (Exception e)
         {
-            Log.Error($"activate {item.Title}", e);
+            Log.Error($"activate {item.UsageKey}", e);
         }
     }
 
@@ -78,7 +78,12 @@ internal sealed class Actions
     private static void Launch(AppEntry app)
     {
         Log.Info($"launch {app.Name} ({app.Id})");
-        Process.Start(new ProcessStartInfo(app.IconPath /* shell:AppsFolder\<id> */)
+        OpenShellItem(app.IconPath);
+    }
+
+    public static void OpenShellItem(string path)
+    {
+        Process.Start(new ProcessStartInfo(path)
         {
             UseShellExecute = true,
             WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

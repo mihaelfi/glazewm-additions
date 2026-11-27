@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -6,48 +5,78 @@ using System.Windows.Media.Imaging;
 namespace GlazeLauncher;
 
 /// <summary>
-/// Loads shell icons (for AppsFolder items or exe paths) on the shared STA worker and caches
+/// Loads shell icons (for AppsFolder items, exe paths, or known folders) on the shared STA worker and caches
 /// them as frozen bitmaps, so the UI thread never touches the shell.
 /// </summary>
 internal sealed class IconCache(StaWorker worker)
 {
     private const int IconPx = 48; // rendered at 26 DIP; 48px stays crisp up to ~180% scaling
 
-    private readonly ConcurrentDictionary<string, ImageSource?> _cache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, List<Action<ImageSource>>> _waiting = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _gate = new();
+    private readonly Dictionary<string, ImageSource?> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<Action<ImageSource>>> _waiting = new(StringComparer.OrdinalIgnoreCase);
 
-    public bool TryGet(string parsingPath, out ImageSource? icon) => _cache.TryGetValue(parsingPath, out icon);
-
-    /// <summary>Calls <paramref name="onLoaded"/> (on the loader thread) once the icon is ready.</summary>
-    public void Request(string parsingPath, Action<ImageSource>? onLoaded = null)
+    public bool TryGet(string parsingPath, out ImageSource? icon, Guid? knownFolderId = null)
     {
-        if (_cache.TryGetValue(parsingPath, out var cached))
-        {
-            if (cached is not null) onLoaded?.Invoke(cached);
-            return;
-        }
-
-        bool first = false;
-        var list = _waiting.GetOrAdd(parsingPath, _ => { first = true; return new List<Action<ImageSource>>(); });
-        lock (list) if (onLoaded is not null) list.Add(onLoaded);
-        if (!first) return;
-
-        worker.Post(() =>
-        {
-            var img = Load(parsingPath);
-            _cache[parsingPath] = img;
-            if (_waiting.TryRemove(parsingPath, out var callbacks) && img is not null)
-            {
-                lock (callbacks) foreach (var cb in callbacks) cb(img);
-            }
-        });
+        lock (_gate) return _cache.TryGetValue(CacheKey(parsingPath, knownFolderId), out icon);
     }
 
-    private static ImageSource? Load(string parsingPath)
+    /// <summary>Calls <paramref name="onLoaded"/> (on the loader thread) once the icon is ready.</summary>
+    public void Request(string parsingPath, Action<ImageSource>? onLoaded = null, Guid? knownFolderId = null)
+    {
+        var key = CacheKey(parsingPath, knownFolderId);
+        ImageSource? cached;
+        lock (_gate)
+        {
+            if (!_cache.TryGetValue(key, out cached))
+            {
+                if (!_waiting.TryGetValue(key, out var callbacks))
+                {
+                    _waiting[key] = callbacks = [];
+                    worker.Post(() => LoadAndPublish(key, parsingPath, knownFolderId));
+                }
+                if (onLoaded is not null) callbacks.Add(onLoaded);
+                return;
+            }
+        }
+        if (cached is not null) onLoaded?.Invoke(cached);
+    }
+
+    private void LoadAndPublish(string key, string parsingPath, Guid? knownFolderId)
+    {
+        ImageSource? image = null;
+        try { image = Load(parsingPath, knownFolderId); }
+        catch (Exception error) { Log.Error($"icon {parsingPath}", error); }
+
+        List<Action<ImageSource>>? callbacks;
+        lock (_gate)
+        {
+            _cache[key] = image;
+            _waiting.Remove(key, out callbacks);
+        }
+        if (image is not null && callbacks is not null)
+            foreach (var callback in callbacks) callback(image);
+    }
+
+    private static string CacheKey(string parsingPath, Guid? knownFolderId) => knownFolderId is { } folderId
+        ? $"known-folder:{folderId:D}|{parsingPath}"
+        : parsingPath;
+
+    private static ImageSource? Load(string parsingPath, Guid? knownFolderId)
     {
         var iid = typeof(Native.IShellItemImageFactory).GUID;
+        if (knownFolderId is { } folderId
+            && Native.SHGetKnownFolderItem(in folderId, 0, IntPtr.Zero, in iid, out var folder) == 0 && folder is not null
+            && GetIcon(folder, parsingPath) is { } icon)
+            return icon;
+
         if (Native.SHCreateItemFromParsingName(parsingPath, IntPtr.Zero, ref iid, out var factory) != 0 || factory is null)
             return null;
+        return GetIcon(factory, parsingPath);
+    }
+
+    private static ImageSource? GetIcon(Native.IShellItemImageFactory factory, string parsingPath)
+    {
         IntPtr hbm = IntPtr.Zero;
         try
         {
