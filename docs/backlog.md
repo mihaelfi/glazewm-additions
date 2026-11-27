@@ -38,9 +38,9 @@ with providers and actions around it.
   The launcher keeps registering its own hotkey when it runs without the supervisor (development, or people who don't want it).
   Considered, not recommended: binding Alt+Space in GlazeWM to `shell-exec GlazeLauncher.exe --toggle`. It starts a .NET process on every press,
   which adds noticeable delay, and it only works while GlazeWM runs.
-- **Launcher settings file** · `done` 2026-11-27 (plumbing only). `%LOCALAPPDATA%\GlazeLauncher\settings.json` with
+- **Launcher settings file** · `done` 2026-11-27. `%LOCALAPPDATA%\GlazeLauncher\settings.json` with
   `version`, `hotkey`, `aliases` and `indexedFolders` (`Settings.cs`). Loaded at start, reloaded on hand edits, saved
-  atomically; nothing reads the values yet. Aliases, the shortcut folder and the hotkey build on it.
+  atomically. Aliases use it; the shortcut folder and the hotkey are still to build on it.
 - **Window backend without GlazeWM** · `idea` · M. The launcher already starts and finds apps without GlazeWM.
   Put window listing and focusing behind one interface with two backends: GlazeWM IPC, and plain Win32
   (enumerate top-level windows, restore if minimized, bring to front). Decide per feature what it means
@@ -59,9 +59,13 @@ with providers and actions around it.
   matches show too (`end` also lists "Close window"). Consider prefix and word-start matches only for the short action list.
 - **Folder → Open terminal here** · `idea` · S. cmd, PowerShell or Windows Terminal, whichever is the default or chosen.
 - **`.sln` / `.slnx` → Open with Rider, Visual Studio or VS Code** · `idea` · S–M. Detect which IDEs are installed. Depends on file results (recent files below).
-- **Aliases** · `idea` · M. Extra names for a result, so `codex` finds ChatGPT. UX proposal: an "Add alias…" action on
-  any app result switches the search box into alias entry; aliases are stored in the settings file, match like a
-  name (exact and prefix tiers), and show as a small tag on the result. Also a way to list and remove them.
+- **Aliases** · `done` 2026-11-27. Extra names for apps, folders and commands, so `codex` finds ChatGPT. Ctrl+K › Add alias…
+  (text entry, can move an alias from another result), Aliases › to remove; exact and prefix matching only; a tag shows
+  when the alias matched. See `docs/launcher.md` (Using it, Result actions). Checked through the pipe only.
+- **Aliases: a list of all aliases** · `idea` · S. Today the full list is `settings.json`; a command or prefix that lists
+  every alias with its target (and remove) would help once there are many.
+- **Text entry for other actions** · `idea`. The text-entry action level built for aliases (`ResultAction.Input`) could
+  serve web search, a calculator, or "Rename" style actions.
 
 ### Context: the window that was active when the launcher opened
 

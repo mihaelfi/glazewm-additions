@@ -14,6 +14,11 @@ internal enum ActionFlags
     NoUsage = 4,
     /// <summary>Gives focus back to the window that was in front when the launcher opened.</summary>
     RestoreFocus = 8,
+    /// <summary>The launcher stays open: afterwards it searches <see cref="ResultAction.ThenQuery"/> if set,
+    /// otherwise it rebuilds the action list (e.g. after removing an alias).</summary>
+    KeepOpen = 16,
+    /// <summary>A row that only informs (e.g. why an alias can't be saved); Enter does nothing.</summary>
+    Disabled = 32,
 }
 
 /// <summary>A key with modifiers that runs an action without opening the action list.</summary>
@@ -58,6 +63,9 @@ internal readonly record struct KeyChord(Key Key, ModifierKeys Modifiers)
 /// <param name="Detail">Muted text after the title.</param>
 /// <param name="Shifted">The variant run with Shift held (Shift+Enter, Ctrl+Shift+N), e.g. "stay on this workspace".</param>
 /// <param name="UsageWorkspace">Workspace the frecency is recorded for; null means the current one.</param>
+/// <param name="Input">Opens a text-entry level: the search box takes text (placeholder <paramref name="InputPlaceholder"/>)
+/// and the rows are built from it as you type, e.g. "Add alias".</param>
+/// <param name="ThenQuery">With <see cref="ActionFlags.KeepOpen"/>: the query the launcher shows afterwards.</param>
 internal sealed record ResultAction(
     string Title,
     string Glyph,
@@ -69,9 +77,15 @@ internal sealed record ResultAction(
     string? Detail = null,
     string? ConfirmTitle = null,
     ResultAction? Shifted = null,
-    string? UsageWorkspace = null)
+    string? UsageWorkspace = null,
+    Func<string, IReadOnlyList<ResultAction>>? Input = null,
+    string? InputPlaceholder = null,
+    string? ThenQuery = null)
 {
-    public bool IsSubmenu => Run is null && Children is not null;
+    public bool IsSubmenu => Run is null && (Children is not null || Input is not null);
+
+    /// <summary>Does nothing on Enter: an informational row.</summary>
+    public bool IsInert => Flags.HasFlag(ActionFlags.Disabled) || (Run is null && !IsSubmenu);
 
     /// <summary>Finds the action for a chord in a list and its submenus. With Shift held, an action whose
     /// shortcut lacks Shift runs its <see cref="Shifted"/> variant (or itself when it has none).</summary>
@@ -203,4 +217,51 @@ internal static class ActionKits
     /// <summary>A result with one thing to do.</summary>
     public static Func<ActionContext, IReadOnlyList<ResultAction>> Single(string title, string glyph, Func<Task> run) =>
         _ => [new ResultAction(title, glyph, run)];
+
+    /// <summary>A result's own actions followed by its alias actions.</summary>
+    public static Func<ActionContext, IReadOnlyList<ResultAction>> WithAliases(AliasBook book, string target, string title,
+        Func<ActionContext, IReadOnlyList<ResultAction>> actions) =>
+        ctx => [.. actions(ctx), .. Aliases(book, target, title)];
+
+    private const string AliasGlyph = ""; // Tag
+
+    /// <summary>"Add alias…" (a text-entry level), and "Aliases ›" to remove one when the result has any.</summary>
+    public static IReadOnlyList<ResultAction> Aliases(AliasBook book, string target, string title)
+    {
+        var list = new List<ResultAction>(2)
+        {
+            new("Add alias…", AliasGlyph, null, Flags: ActionFlags.NoUsage,
+                Input: text => AliasInput(book, target, title, text),
+                InputPlaceholder: $"Alias for {title}, ↵ saves"),
+        };
+        var existing = book.AliasesFor(target);
+        if (existing.Count > 0)
+        {
+            list.Add(new ResultAction("Aliases", AliasGlyph, null, Detail: string.Join(", ", existing),
+                Children: () => book.AliasesFor(target).Select(alias => new ResultAction(
+                    $"Remove alias “{alias}”", "", () => { book.Remove(alias); return Task.CompletedTask; },
+                    Flags: ActionFlags.NoUsage | ActionFlags.KeepOpen)).ToList()));
+        }
+        return list;
+    }
+
+    /// <summary>The row for the text typed in "Add alias…": save it, move it from another result, or why it can't be saved.</summary>
+    private static IReadOnlyList<ResultAction> AliasInput(AliasBook book, string target, string title, string text)
+    {
+        if (AliasBook.Validate(text, out var alias) is { } error) return [Inert(error)];
+        if (alias.Length == 0) return [];
+        if (!book.CanSave) return [Inert("settings.json has a JSON error; fix it to save aliases")];
+
+        var owner = book.TargetOf(alias);
+        if (owner == target) return [Inert($"“{alias}” is already an alias of {title}")];
+        return
+        [
+            new ResultAction(owner is null ? $"Add alias “{alias}”" : $"Move alias “{alias}” here", AliasGlyph,
+                () => { book.Add(alias, target); return Task.CompletedTask; },
+                Detail: owner is null ? $"for {title}" : $"from {book.Describe(owner) ?? owner}",
+                Flags: ActionFlags.NoUsage | ActionFlags.KeepOpen, ThenQuery: alias),
+        ];
+    }
+
+    private static ResultAction Inert(string title) => new(title, "", null, Flags: ActionFlags.Disabled);
 }

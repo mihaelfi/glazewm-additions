@@ -292,7 +292,21 @@ public partial class MainWindow : Window
 
     // ---- result actions ---------------------------------------------------------
 
-    private sealed record ActionLevel(string Title, IReadOnlyList<ResultAction> Actions);
+    /// <summary>One level of the action list. A text-entry level (<paramref name="input"/>) builds its rows from the
+    /// typed text instead of filtering a fixed list.</summary>
+    private sealed class ActionLevel(string title, Func<IReadOnlyList<ResultAction>> source, ResultAction? input = null)
+    {
+        public string Title => title;
+        public ResultAction? Input => input;
+        public IReadOnlyList<ResultAction> Actions { get; private set; } = [];
+
+        /// <summary>(Re)builds the list, e.g. after an action changed what it shows.</summary>
+        public ActionLevel Load()
+        {
+            if (input is null) Actions = source();
+            return this;
+        }
+    }
 
     private readonly List<ActionLevel> _levels = [];
     private ResultItem? _actionItem;
@@ -308,11 +322,13 @@ public partial class MainWindow : Window
         if (InActionMode) return;
         var actions = SelectedActions(out var item);
         if (item is null || actions.Count == 0) return;
+        // The search box becomes the filter, so the "@N" context is captured now for rebuilding the list.
+        var context = CurrentContext();
 
         _actionItem = item;
         _savedQuery = QueryBox.Text;
         _levels.Clear();
-        _levels.Add(new ActionLevel(item.Title, actions));
+        _levels.Add(new ActionLevel(item.Title, () => item.Actions(context)).Load());
 
         Results.Visibility = Visibility.Collapsed;
         ActionList.Visibility = Visibility.Visible;
@@ -320,17 +336,21 @@ public partial class MainWindow : Window
         Crumb.Visibility = Visibility.Visible;
         CrumbIcon.Source = item.Icon;
         CrumbGlyph.Text = item.Icon is null ? item.Glyph : "";
-        Placeholder.Text = "Filter actions…";
         SetQueryText("");
         RenderActions();
     }
 
     private void OpenSubmenu(ResultAction submenu)
     {
-        IReadOnlyList<ResultAction> children;
-        try { children = submenu.Children!(); }
+        ActionLevel level;
+        try
+        {
+            level = submenu.Input is not null
+                ? new ActionLevel(submenu.Title, () => [], submenu)
+                : new ActionLevel(submenu.Title, submenu.Children!).Load();
+        }
         catch (Exception e) { Log.Error($"submenu {submenu.Title}", e); return; }
-        _levels.Add(new ActionLevel(submenu.Title, children));
+        _levels.Add(level);
         SetQueryText("");
         RenderActions();
     }
@@ -393,9 +413,21 @@ public partial class MainWindow : Window
         var level = _levels[^1];
         var filter = QueryBox.Text.Trim().ToLowerInvariant();
         bool top = _levels.Count == 1;
+        Placeholder.Text = level.Input is { } prompt ? prompt.InputPlaceholder ?? "Type…" : "Filter actions…";
 
         List<ActionRow> rows;
-        if (filter.Length == 0)
+        if (level.Input is { } input)
+        {
+            IReadOnlyList<ResultAction> built;
+            try { built = input.Input!(QueryBox.Text); }
+            catch (Exception e)
+            {
+                Log.Error($"input {input.Title}", e);
+                built = [];
+            }
+            rows = built.Select((action, i) => new ActionRow(action, i == 0 && !action.IsInert, null)).ToList();
+        }
+        else if (filter.Length == 0)
         {
             rows = level.Actions.Select((action, i) => new ActionRow(action, top && i == 0, null)).ToList();
         }
@@ -418,9 +450,15 @@ public partial class MainWindow : Window
 
     private void UpdateActionFooter()
     {
+        bool input = _levels.Count > 0 && _levels[^1].Input is not null;
         if (ActionList.SelectedItem is not ActionRow row)
         {
-            Footer.Text = "No matching actions   ← back   Esc back";
+            Footer.Text = input ? "Type, then ↵   Esc back" : "No matching actions   ← back   Esc back";
+            return;
+        }
+        if (row.Action.IsInert)
+        {
+            Footer.Text = "Esc back";
             return;
         }
         if (row.IsArmed)
@@ -430,7 +468,8 @@ public partial class MainWindow : Window
         }
         var parts = new List<string> { row.Action.IsSubmenu ? "↵ or → open" : "↵ run" };
         if (row.Action.Shifted is { } shifted) parts.Add("Shift+↵ " + shifted.Title);
-        parts.Add("← back");
+        // ← only goes back with an empty box; in a text-entry level it moves the caret otherwise.
+        if (!input || QueryBox.Text.Length == 0) parts.Add("← back");
         parts.Add("Esc back");
         Footer.Text = string.Join("   ", parts);
     }
@@ -438,6 +477,7 @@ public partial class MainWindow : Window
     /// <summary>Runs an action: opens a submenu, arms a confirmation, or hides the launcher and runs it.</summary>
     private async Task Execute(ResultItem item, ResultAction action, ActionRow? row)
     {
+        if (action.IsInert) return;
         if (action.IsSubmenu)
         {
             if (!InActionMode) return;
@@ -459,8 +499,35 @@ public partial class MainWindow : Window
         }
 
         var wm = _wm;
+        if (action.Flags.HasFlag(ActionFlags.KeepOpen))
+        {
+            await _actions.Run(item, action, wm);
+            if (IsVisible) AfterKeepOpen(action);
+            return;
+        }
         HideLauncher(restoreFocus: action.Flags.HasFlag(ActionFlags.RestoreFocus));
         await _actions.Run(item, action, wm);
+    }
+
+    /// <summary>After an action that keeps the launcher open: search its follow-up query (e.g. a new alias, to show
+    /// it working), or rebuild the action list, whose rows may have changed (e.g. a removed alias).</summary>
+    private void AfterKeepOpen(ResultAction action)
+    {
+        if (action.ThenQuery is { } query)
+        {
+            CloseActions();
+            SetQueryText(query);
+            Refresh(keepSelection: false);
+            return;
+        }
+        if (!InActionMode) { Refresh(keepSelection: true); return; }
+
+        try { foreach (var level in _levels) level.Load(); }
+        catch (Exception e) { Log.Error("rebuilding the action list", e); }
+        // A submenu that's now empty (its last alias removed) closes.
+        while (_levels.Count > 1 && _levels[^1].Input is null && _levels[^1].Actions.Count == 0) _levels.RemoveAt(_levels.Count - 1);
+        SetQueryText("");
+        RenderActions();
     }
 
     /// <summary>Enter on the result list: a matching shortcut (Ctrl+↵, …) or the default action;
@@ -585,6 +652,7 @@ internal sealed class ActionRow(ResultAction action, bool isDefault, int[]? matc
     public string Detail => action.Detail ?? "";
     public Visibility DetailVisibility => Detail.Length > 0 && !IsArmed ? Visibility.Visible : Visibility.Collapsed;
     public bool IsDestructive => action.Flags.HasFlag(ActionFlags.Destructive);
+    public bool IsInert => action.IsInert;
 
     public string ShortcutLabel => action.IsSubmenu
         ? (action.Hint is { } hint ? hint + "  ›" : "›")

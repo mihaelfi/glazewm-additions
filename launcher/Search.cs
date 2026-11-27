@@ -24,16 +24,22 @@ internal sealed class ResultItem : INotifyPropertyChanged
     public string? IconPath { get; init; }
     public Guid? IconFolderId { get; init; }
     public int? SubtitleMatchStart { get; init; }
+    /// <summary>The user's alias that found this result; shown as a tag after the title, which isn't highlighted then.</summary>
+    public string? MatchedAlias { get; init; }
 
     private int[]? _titleMatches;
     private int[]? _subtitleMatches;
+    private int[]? _aliasMatches;
 
     public HighlightedText TitleText => new(Title, _titleMatches);
     public HighlightedText SubtitleText => new(Subtitle, _subtitleMatches, SubtitleMatchStart ?? 0);
+    public HighlightedText AliasText => new(MatchedAlias ?? "", _aliasMatches);
 
     public void Highlight(string query)
     {
-        if (SubtitleMatchStart is { } start)
+        if (MatchedAlias is { } alias)
+            _aliasMatches = Fuzzy.FindPositions(query, alias);
+        else if (SubtitleMatchStart is { } start)
             _subtitleMatches = Fuzzy.FindPositions(query, Subtitle[start..]);
         else
             _titleMatches = Fuzzy.FindPositions(query, Title);
@@ -52,6 +58,7 @@ internal sealed class ResultItem : INotifyPropertyChanged
     }
 
     public Visibility SubtitleVisibility => Subtitle.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility AliasVisibility => MatchedAlias is null ? Visibility.Collapsed : Visibility.Visible;
     public Visibility BadgeVisibility => Badge.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     public Visibility GlyphVisibility => Icon is null && Glyph.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -169,7 +176,7 @@ internal static class Fuzzy
 }
 
 /// <summary>Merges provider results with one ranking policy.</summary>
-internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, UsageStore usage)
+internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, UsageStore usage, AliasBook aliases)
 {
     private const int MaxResults = 40;
     private const int MaxRecents = 6;
@@ -185,7 +192,7 @@ internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, Usa
         var recents = home
             ? usage.Top(currentWs, int.MaxValue).ToDictionary(entry => entry.Key, entry => entry.Score)
             : [];
-        var context = new SearchContext(query, wm, recents);
+        var context = new SearchContext(query, wm, recents, home ? AliasBook.NoHits : aliases.Match(query.Text));
 
         var results = new List<(ProviderResult Result, double Score)>(64);
         var pinned = new List<ResultItem>();

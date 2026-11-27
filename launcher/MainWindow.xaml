@@ -69,7 +69,19 @@
                      FontSize="17" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Grid>
         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-          <local:HighlightedTextBlock Value="{Binding TitleText}" FontSize="14.5" TextTrimming="CharacterEllipsis"/>
+          <!-- Left-aligned, so the alias tag sits right after the title and the title still trims when long. -->
+          <DockPanel HorizontalAlignment="Left">
+            <Border DockPanel.Dock="Right" Visibility="{Binding AliasVisibility}" BorderBrush="{StaticResource SelectionBorderBrush}"
+                    BorderThickness="1" CornerRadius="4" Padding="5,0,6,0" Margin="8,0,0,0" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#xE8EC;" FontFamily="{StaticResource IconFont}" FontSize="10" Margin="0,1,4,0"
+                           Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                <local:HighlightedTextBlock Value="{Binding AliasText}" FontSize="11.5" Foreground="{StaticResource MutedBrush}"
+                                            VerticalAlignment="Center"/>
+              </StackPanel>
+            </Border>
+            <local:HighlightedTextBlock Value="{Binding TitleText}" FontSize="14.5" TextTrimming="CharacterEllipsis"/>
+          </DockPanel>
           <local:HighlightedTextBlock Value="{Binding SubtitleText}" Visibility="{Binding SubtitleVisibility}" FontSize="12"
                                       Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
         </StackPanel>
@@ -103,6 +115,10 @@
         <DataTrigger Binding="{Binding IsDestructive}" Value="True">
           <Setter TargetName="ActionGlyph" Property="Foreground" Value="{StaticResource DangerBrush}"/>
           <Setter TargetName="ActionTitle" Property="Foreground" Value="{StaticResource DangerBrush}"/>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsInert}" Value="True">
+          <Setter TargetName="ActionGlyph" Property="Foreground" Value="{StaticResource MutedBrush}"/>
+          <Setter TargetName="ActionTitle" Property="Foreground" Value="{StaticResource MutedBrush}"/>
         </DataTrigger>
         <DataTrigger Binding="{Binding IsArmed}" Value="True">
           <Setter TargetName="ActionTitle" Property="FontWeight" Value="SemiBold"/>

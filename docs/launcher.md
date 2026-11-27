@@ -30,6 +30,11 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
   the monitor you were on when you opened the launcher (`@3` → `13` on the primary monitor, `23` on the next one), the same
   rule as Alt+N; two digits (`@23`) are taken literally. The launcher also opens on that monitor. By default your view follows the window; hold **Shift** to stay where you are
   (Hyprland's "silent"). The chip at the right of the search box shows the target (`→ ws 13`).
+- **Aliases:** extra names for apps, folders and commands, so `codex` finds ChatGPT. Add one with Ctrl+K › **Add alias…**
+  (see Result actions). An alias matches exactly or by prefix only (`codex`, `cod`; not `dex`), ranks like a name match of
+  the same tier, and works with `@N` (`codex @3`). A name match of the same quality wins over the alias. When the alias is
+  what found the result, it shows as a small tag after the title (`ChatGPT [codex]`) with the typed part highlighted.
+  Windows and browser tabs can't have aliases (they come and go; an app alias covers its windows).
 - **Store suggestions never show.** Only apps installed for this user are results; Windows Search's Store ads for apps you
   don't have (Netflix and the like) are filtered out with the Store stubs (checked 2026-11-27: `netflix` finds nothing).
 
@@ -46,7 +51,9 @@ the results is built from the selected result's actions: the default, Ctrl+K, an
 | App | Focus open window / Focus next open window, or Open (↵) · Open new window (Ctrl+↵, when open) · Open on workspace › (Ctrl+1–9, +Shift stay) · Open file location (Win32 apps only) |
 | Window | Focus window (↵) · Bring to this workspace (Ctrl+↵, when elsewhere) · Move to workspace › (Ctrl+1–9, +Shift stay) · Open file location · Close window (Ctrl+W) · End task |
 | With `@N` in the query | App: Open on workspace N (↵, Shift+↵ stay); window: Move to workspace N (↵, Shift+↵ stay) |
-| Folder, command, go to workspace, browser tab | One default action each |
+| Folder, command | Their default action (Open in File Explorer / Run) |
+| App, folder, command | Also: Add alias… (text entry) · Aliases › (when it has any; Enter on one removes it) |
+| Go to workspace, browser tab | One default action each |
 
 - **Shortcuts work without opening the list:** a Ctrl chord is looked up in the selected result's actions and their
   submenus, so Ctrl+3 runs "Move to workspace 13". Shift added to a shortcut runs the action's "stay here" variant.
@@ -59,11 +66,22 @@ the results is built from the selected result's actions: the default, Ctrl+K, an
   process; elevated processes fail (logged).
 - **Open file location** runs `explorer /select,` on the app's target exe or the window's exe. It isn't offered for
   packaged apps (their files are in `WindowsApps`, which Explorer can't open).
-- Close, End task and Open file location don't count towards frecency; workspace actions record usage for the target workspace.
+- **Add alias…** turns the search box into a text field (`ChatGPT › Add alias…`). The row under it follows the text: `Add
+  alias "codex"  for ChatGPT`, `Move alias "codex" here  from Notepad` when another result has it, or a muted line saying why
+  it can't be saved (already this result's alias, contains `@`, longer than 40 characters, or `settings.json` has a JSON
+  error). Enter saves it and shows the results for the new alias, so you see it work. Aliases are stored lower case with
+  spaces collapsed.
+- **Aliases ›** lists the result's aliases as "Remove alias …" rows; Enter removes one and the list stays open (it closes
+  when the last one is gone).
+- Close, End task, Open file location and the alias actions don't count towards frecency; workspace actions record usage for the target workspace.
+- **Text-entry levels and keep-open actions** are general: a `ResultAction` with `Input` builds its rows from the typed text,
+  `ActionFlags.KeepOpen` runs an action without hiding the launcher (then searches `ThenQuery`, or rebuilds the list), and
+  `ActionFlags.Disabled` marks an informational row.
 
 ## Settings file
 
-`%LOCALAPPDATA%\GlazeLauncher\settings.json` (`Settings.cs`). **Plumbing only:** nothing reads the values yet.
+`%LOCALAPPDATA%\GlazeLauncher\settings.json` (`Settings.cs`). `aliases` is in use (`Aliases.cs`); `hotkey` and
+`indexedFolders` are read but not used yet.
 
 ```json
 {
@@ -74,7 +92,8 @@ the results is built from the selected result's actions: the default, Ctrl+K, an
 }
 ```
 
-- Alias targets are a result's usage key (`app:…`, `folder:…`), the same IDs `usage.json` uses.
+- Alias targets are a result's usage key (`app:…`, `folder:…`, `cmd:<title>`), the same IDs `usage.json` uses. Hand
+  edits may use any case; `AliasBook` normalizes. An alias whose target is gone (an uninstalled app) is ignored.
 - Written with defaults when missing. Reading allows comments and trailing commas. Keys this build doesn't know are kept
   on save (`[JsonExtensionData]`).
 - Edits by hand are picked up by a file watcher (300 ms debounce; the launcher's own writes are ignored). A file with a
@@ -131,10 +150,11 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
 | `GlazeClient.cs` | WebSocket client for GlazeWM IPC `ws://127.0.0.1:6123`: `sub --events …`, `query monitors`, `command [--id X] …`. On any event it re-queries the tree (80 ms debounce), forwards `window_managed`, and raises `EventReceived` and `ConnectionChanged`. `WmSnapshot.TargetMonitor` is the monitor a one-digit `@N` refers to. `WmWindow` keeps id, handle, title, process, workspace and focus, not the window state; `WindowStateAsync` queries one window's state on demand |
 | `ShellIndex.cs` | Refreshes the app catalog and known folders on the background STA thread. Checks Store package status while indexing apps and re-indexes on open if the index is older than 2 min. |
 | `KnownFolder.cs` | Resolves the standard per-user folder IDs with `SHGetKnownFolderPath` and publishes the folders Windows can resolve |
-| `Search.cs` | Query parsing (`@N`), fuzzy match tiers and character positions, merged ranking, shared result model, `WindowIdentity` |
-| `SearchProviders.cs` | `ISearchProvider` contract and the compiled-in app, window, folder, command and go-to-workspace providers. A `Pinned` result is shown above all ranked results |
+| `Search.cs` | Query parsing (`@N`), fuzzy match tiers and character positions, merged ranking, shared result model (`MatchedAlias` for the tag), `WindowIdentity` |
+| `SearchProviders.cs` | `ISearchProvider` contract and the compiled-in app, window, folder, command and go-to-workspace providers. A `Pinned` result is shown above all ranked results. `SearchContext.AliasHits` holds the query's alias matches (computed once per search); `WithAlias` picks the better of name and alias match |
 | `ResultActions.cs` | `ResultAction` (title, glyph, callback, optional shortcut, submenu, flags, Shift variant), `KeyChord`, `ActionContext` (snapshot + resolved `@N`), and `ActionKits`: the shared app, window and workspace-slot action sets providers compose |
 | `Settings.cs` | `LauncherSettings` and `SettingsStore`: load, watch, atomic save of `settings.json` |
+| `Aliases.cs` | `AliasBook`: alias index built lazily from the current settings (no events or locks), exact/prefix matching per query, add, move and remove through `SettingsStore.Update` |
 | `BrowserTabSearchProvider.cs` | Refreshes the Chrome and Edge tab cache on a background thread using only their accessibility tab strips. Selects a tab by its runtime ID within the original browser window. |
 | `Actions.cs` | What actions do: `Run` (records frecency, logs failures), launch, `LaunchOn`, `FocusOrCycle`, `MoveWindow`, `CloseWindow`, `EndTask`, `ShowInExplorer`, commands. Open app and window results share a focus path that runs `focus --workspace N` for hidden workspaces, restores a minimized window (Win32 `SW_RESTORE`, then waits up to 600 ms for GlazeWM to stop reporting it as minimized, because focusing it earlier leaves GlazeWM's focus on the previous window), then runs `focus --container-id`. After an `@N` launch, the next matching `window_managed` window (within 15 s) gets `move --workspace N` and uses the same focus path if following. |
 | `IconCache.cs` | Windows Shell icons (`IShellItemImageFactory`, 48px, alpha kept) loaded on the STA thread. Known folders use `SHGetKnownFolderItem` first, and the cache warms folder icons before app icons at startup. |
@@ -219,6 +239,8 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
   may need an entry in `PackagedProcessAliases`.
 - Browser tab search depends on the tab controls Chrome and Edge expose through accessibility. Fullscreen and collapsed tab groups have not been checked.
 - Minimized windows are sometimes missing from results (needs a repro). Tracked in the backlog.
+- **Aliases were checked through the pipe only** (add, duplicate, `@`, move preview, folder alias, `codex @3`, remove,
+  restart). Not yet checked: typing them with the real keyboard, hand edits of `aliases` in `settings.json`, and a command alias.
 - **Result actions were checked through the pipe only** (`key:`, `enter`, `actions`). Not yet checked: the real keyboard
   (Ctrl+K, →, Ctrl+W, Ctrl+1…9), mouse clicks on action rows, and Shift-click.
 - **The workspace keys need the launcher.** The supervisor restarts it after any crash at once and after a hang in about
@@ -249,12 +271,26 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-workspace-manager-20261127-185520\`: before the workspace manager
 - `.glzr\launcher\before-supervisor-20261127-192822\`: before the supervisor
 - `.glzr\launcher\before-result-actions-20261127-194948\`: before result actions and the settings file
+- `.glzr\launcher\before-aliases-20261127-224525\`: before aliases
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-27
+- **Added aliases.** Design agreed with the user first: exact and prefix matching only; apps, folders and commands; a tag
+  when the alias matched, and per-result removal. New `Aliases.cs` (`AliasBook`). `Search.cs`: `ResultItem.MatchedAlias`
+  and `AliasText`, `SearchEngine` takes the `AliasBook`. `SearchProviders.cs`: `SearchContext.AliasHits` and `WithAlias`,
+  used by the app, folder and command providers. `ResultActions.cs`: `ResultAction.Input`, `InputPlaceholder` and
+  `ThenQuery`, flags `KeepOpen` and `Disabled`, `IsInert`, and `ActionKits.Aliases` / `WithAliases`. `MainWindow.xaml(.cs)`:
+  `ActionLevel` can rebuild itself and be a text-entry level, keep-open actions, the alias tag, muted inert rows.
+  `Settings.cs`: `SettingsStore.IsBroken`. `App.xaml.cs` builds the `AliasBook` and describes alias targets for "Move".
+  Published and installed through the supervisor; the user's `codex` → ChatGPT alias was added during testing and kept.
+  - Checked through the pipe with snapshots: Add alias on ChatGPT (the app's ID is `OpenAI.Codex_…!App`), `codex` finds it with
+    the tag, `cod` ranks it first, `dex` doesn't find it; the duplicate and `a@b` rows are inert; a second alias `gpt`, then
+    Aliases › showed both and removing `gpt` kept the list open with `codex`; on Downloads, `codex` offered "Move … from
+    ChatGPT"; `dl` on Downloads worked and removing it closed the submenu; `codex @3` defaulted to Open on workspace 13;
+    the alias survived a restart (`settings: loaded (1 aliases …)`).
 - **Added result actions and the settings file.** New `ResultActions.cs` (`ResultAction`, `KeyChord`, `ActionContext`,
   `ActionKits` with app, window and workspace-slot actions) and `Settings.cs` (`LauncherSettings`, `SettingsStore`).
   `ResultItem` (`Search.cs`) lost `Activate`, `FooterText` and `SupportsWorkspaceTarget` and gained `Actions`; every

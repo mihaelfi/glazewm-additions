@@ -16,7 +16,7 @@ internal sealed class LauncherSettings
     /// <summary>The launcher hotkey. Read, not applied yet (Alt+Space is fixed for now).</summary>
     public string Hotkey { get; set; } = "Alt+Space";
 
-    /// <summary>Extra name → a result's stable ID (its usage key, e.g. <c>app:…</c> or <c>folder:…</c>). Not used yet.</summary>
+    /// <summary>Extra name → a result's stable ID (its usage key: <c>app:…</c>, <c>folder:…</c> or <c>cmd:…</c>). See <see cref="AliasBook"/>.</summary>
     public Dictionary<string, string> Aliases { get; set; } = [];
 
     /// <summary>Folders whose items become results. Not used yet.</summary>
@@ -63,6 +63,9 @@ internal sealed class SettingsStore : IDisposable
     public string FilePath => _path;
 
     public LauncherSettings Current { get; private set; } = new();
+
+    /// <summary>True while the file on disk has a JSON error; <see cref="Update"/> refuses to save then.</summary>
+    public bool IsBroken { get { lock (_gate) return _fileBroken; } }
 
     /// <summary>Raised (on a background thread) after a reload changed the settings.</summary>
     public event Action<LauncherSettings>? Changed;

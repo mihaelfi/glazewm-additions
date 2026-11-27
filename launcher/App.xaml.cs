@@ -104,23 +104,24 @@ public partial class App : Application
         var shellIndex = _shellIndex = new ShellIndex(sta);
         _usage = new UsageStore();
         _usage.Load();
-        // Settings plumbing only: nothing reads the values yet (aliases, indexed folders and the hotkey are later steps).
+        // Aliases read the settings; the indexed folders and the hotkey are later steps.
         _settings = new SettingsStore();
         _settings.Load();
         _settings.Watch();
+        var aliases = new AliasBook(_settings, target => DescribeTarget(shellIndex, target));
         _glaze = new GlazeClient();
         var identity = new WindowIdentity();
         var actions = new Actions(_glaze, _usage, identity);
         var search = new SearchEngine(
             [
-                new AppSearchProvider(shellIndex, identity, actions),
+                new AppSearchProvider(shellIndex, identity, actions, aliases),
                 new WindowSearchProvider(identity, actions),
                 new BrowserTabSearchProvider(_glaze, identity, actions),
-                new FolderSearchProvider(shellIndex),
-                new CommandSearchProvider(actions),
+                new FolderSearchProvider(shellIndex, aliases),
+                new CommandSearchProvider(actions, aliases),
                 new WorkspaceSearchProvider(actions),
             ],
-            _usage);
+            _usage, aliases);
 
         _workspaces = new WorkspaceManager(_glaze);
 
@@ -335,6 +336,16 @@ public partial class App : Application
     }
 
     private Task ReindexAsync() => _shellIndex?.Refresh() ?? Task.CompletedTask;
+
+    /// <summary>The title of the result an alias points at (app, folder or command), for "Move alias … from X".</summary>
+    private static string? DescribeTarget(ShellIndex index, string target)
+    {
+        if (target.StartsWith("app:", StringComparison.Ordinal))
+            return index.Apps.FirstOrDefault(app => app.UsageKey == target)?.Name;
+        if (target.StartsWith("folder:", StringComparison.Ordinal))
+            return index.Folders.FirstOrDefault(folder => $"folder:{folder.Id:D}" == target)?.Name;
+        return CommandSearchProvider.Commands.FirstOrDefault(command => command.UsageKey == target)?.Title;
+    }
 
     private void Quit()
     {

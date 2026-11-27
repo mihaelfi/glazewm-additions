@@ -1,9 +1,19 @@
 namespace GlazeLauncher;
 
+/// <param name="AliasHits">The user's aliases that match the query, by target usage key.</param>
 internal readonly record struct SearchContext(
-    Query Query, WmSnapshot Wm, IReadOnlyDictionary<string, double> Recents)
+    Query Query, WmSnapshot Wm, IReadOnlyDictionary<string, double> Recents, IReadOnlyDictionary<string, AliasHit> AliasHits)
 {
     public bool IsHome => Query.Text.Length == 0;
+
+    /// <summary>The better of a result's name match and its alias match; <paramref name="alias"/> is set when the alias won.</summary>
+    public TextMatch WithAlias(string usageKey, TextMatch nameMatch, out string? alias)
+    {
+        alias = null;
+        if (!AliasHits.TryGetValue(usageKey, out var hit) || hit.Match.CompareTo(nameMatch) <= 0) return nameMatch;
+        alias = hit.Alias;
+        return hit.Match;
+    }
 }
 
 /// <param name="Pinned">Shown above every ranked result, e.g. the action a query asks for directly.</param>
@@ -22,7 +32,7 @@ internal interface IRefreshableSearchProvider : ISearchProvider
     Task RefreshAsync(WmSnapshot snapshot);
 }
 
-internal sealed class AppSearchProvider(ShellIndex index, WindowIdentity identity, Actions actions) : ISearchProvider
+internal sealed class AppSearchProvider(ShellIndex index, WindowIdentity identity, Actions actions, AliasBook aliases) : ISearchProvider
 {
     private WmSnapshot? _previousSnapshot;
     private IReadOnlyList<AppEntry>? _previousApps;
@@ -37,6 +47,7 @@ internal sealed class AppSearchProvider(ShellIndex index, WindowIdentity identit
         foreach (var app in apps)
         {
             var match = default(TextMatch);
+            string? alias = null;
             if (context.IsHome)
             {
                 if (!context.Recents.ContainsKey(app.UsageKey)) continue;
@@ -44,10 +55,11 @@ internal sealed class AppSearchProvider(ShellIndex index, WindowIdentity identit
             else
             {
                 match = Fuzzy.Match(context.Query.Text, app.Name);
-                if (!match.Found) continue;
                 // Prefer the canonical app for its executable or app ID, e.g. Chrome over Chrome Remote Desktop.
-                if (app.MatchIds.Contains(context.Query.Text))
+                if (match.Found && app.MatchIds.Contains(context.Query.Text))
                     match = new TextMatch(MatchQuality.Exact, Math.Max(match.Score, 980));
+                match = context.WithAlias(app.UsageKey, match, out alias);
+                if (!match.Found) continue;
             }
 
             IReadOnlyList<WmWindow> running = runningByApp.GetValueOrDefault(app) ?? [];
@@ -61,8 +73,9 @@ internal sealed class AppSearchProvider(ShellIndex index, WindowIdentity identit
                 Subtitle = running.Count == 0 ? "Application" : $"Application · {running.Count} open",
                 Badge = badge,
                 UsageKey = app.UsageKey,
+                MatchedAlias = alias,
                 IconPath = app.IconPath,
-                Actions = ctx => ActionKits.App(actions, app, running, ctx),
+                Actions = ctx => [.. ActionKits.App(actions, app, running, ctx), .. ActionKits.Aliases(aliases, app.UsageKey, app.Name)],
             }, match);
         }
     }
@@ -132,7 +145,7 @@ internal sealed class WindowSearchProvider(WindowIdentity identity, Actions acti
     }
 }
 
-internal sealed class FolderSearchProvider(ShellIndex index) : ISearchProvider
+internal sealed class FolderSearchProvider(ShellIndex index, AliasBook aliases) : ISearchProvider
 {
     public int Priority => 16;
 
@@ -143,7 +156,7 @@ internal sealed class FolderSearchProvider(ShellIndex index) : ISearchProvider
         foreach (var folder in index.Folders)
         {
             var id = $"folder:{folder.Id:D}";
-            var match = Fuzzy.Match(context.Query.Text, folder.Name);
+            var match = context.WithAlias(id, Fuzzy.Match(context.Query.Text, folder.Name), out var alias);
             if (context.IsHome ? !context.Recents.ContainsKey(id) : !match.Found) continue;
 
             yield return new ProviderResult(new ResultItem
@@ -155,11 +168,12 @@ internal sealed class FolderSearchProvider(ShellIndex index) : ISearchProvider
                 IconPath = folder.Path,
                 IconFolderId = folder.Id,
                 UsageKey = id,
-                Actions = ActionKits.Single("Open in File Explorer", "\uE838", () =>
+                MatchedAlias = alias,
+                Actions = ActionKits.WithAliases(aliases, id, folder.Name, ActionKits.Single("Open in File Explorer", "\uE838", () =>
                 {
                     Actions.OpenShellItem(folder.Path);
                     return Task.CompletedTask;
-                }),
+                })),
             }, match);
         }
     }
@@ -191,9 +205,9 @@ internal sealed class WorkspaceSearchProvider(Actions actions) : ISearchProvider
     }
 }
 
-internal sealed class CommandSearchProvider(Actions actions) : ISearchProvider
+internal sealed class CommandSearchProvider(Actions actions, AliasBook aliases) : ISearchProvider
 {
-    private static readonly LauncherCommand[] Commands =
+    public static readonly LauncherCommand[] Commands =
     [
         new("Toggle tiling direction", "GlazeWM", "", "toggle-tiling-direction"),
         new("Toggle floating", "GlazeWM · focused window", "", "toggle-floating --centered"),
@@ -215,7 +229,7 @@ internal sealed class CommandSearchProvider(Actions actions) : ISearchProvider
 
         foreach (var command in Commands)
         {
-            var match = Fuzzy.Match(context.Query.Text, command.Title);
+            var match = context.WithAlias(command.UsageKey, Fuzzy.Match(context.Query.Text, command.Title), out var alias);
             if (context.IsHome ? !context.Recents.ContainsKey(command.UsageKey) : !match.Found) continue;
 
             yield return new ProviderResult(new ResultItem
@@ -225,7 +239,9 @@ internal sealed class CommandSearchProvider(Actions actions) : ISearchProvider
                 Subtitle = command.Subtitle,
                 Glyph = command.Glyph,
                 UsageKey = command.UsageKey,
-                Actions = ActionKits.Single("Run", command.Glyph, () => actions.RunCommand(command)),
+                MatchedAlias = alias,
+                Actions = ActionKits.WithAliases(aliases, command.UsageKey, command.Title,
+                    ActionKits.Single("Run", command.Glyph, () => actions.RunCommand(command))),
             }, match);
         }
     }
