@@ -26,7 +26,10 @@ with providers and actions around it.
      errors, start a replacement before exiting (not within the first 60 s). Covers managed .NET crashes.
   2. `done` 2026-11-27. `RegisterApplicationRestart` for native crashes and hangs. **No effect on this PC**, because Windows
      Error Reporting is disabled here; it only helps where it's on.
-  3. `idea` · M. Still needed for native crashes, hangs and kills on this PC. A tiny native supervisor (Rust, like the collector, about 1–2 MB). GlazeWM starts it instead of the launcher. It owns the
+  3. `done` 2026-11-27, as a **watcher** (`supervisor/`, see `docs/launcher.md`): restarts after any crash or kill, ends and
+     restarts a hung launcher (Windows' "not responding" for three checks 2 s apart). The hotkeys stayed in the launcher; the
+     design below, where the supervisor owns them and replays a key, was considered and not built. Original idea:
+     A tiny native supervisor (Rust, like the collector, about 1–2 MB). GlazeWM starts it instead of the launcher. It owns the
      global hotkeys (Alt+Space, Alt+1…9) and forwards each press over the existing pipe. It starts the launcher itself (detached,
      no inherited handles) and waits on its process handle, so it uses no CPU and restarts the launcher the moment it exits.
      On a key press it expects a reply within about 300 ms. If the launcher is gone or hung, it kills or starts it and replays

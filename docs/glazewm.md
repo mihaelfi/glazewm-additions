@@ -48,8 +48,9 @@ GlazeLauncher runs; the launcher releases them while GlazeWM isn't running.
 
 ### Startup and window rules
 
-`startup_commands` runs `shell-exec zebar`, then `shell-exec %USERPROFILE%/.glzr/launcher/GlazeLauncher.exe`.
-The launcher syncs the workspaces when it connects (this replaced `workspace.ps1 -Action Initialize`).
+`startup_commands` runs `shell-exec zebar`, then `shell-exec %USERPROFILE%/.glzr/launcher/GlazeSupervisor.exe`, which
+starts the launcher and restarts it after a crash or hang (see [`launcher.md`](launcher.md)). The launcher syncs the
+workspaces when it connects (this replaced `workspace.ps1 -Action Initialize`).
 
 Window rules: an extra `ignore` rule for `window_process: GlazeLauncher`, so GlazeWM never tiles the launcher popup.
 
@@ -69,12 +70,15 @@ GlazeWM's focused monitor (wrong after clicking an empty desktop), and started P
 - `.glzr\glazewm\backup-before-nine-workspaces-20261127-110114\`: config + script from the 10–19 / 20–29 version
 - `.glzr\glazewm\config.before-launcher-20261127-140419.yaml`: config before the launcher (alt+space was `wm-cycle-focus`)
 - `.glzr\glazewm\config.before-workspace-manager-20261127-185520.yaml`: config before the launcher took over the workspace keys and groups 3–6 were added
+- `.glzr\glazewm\config.before-supervisor-20261127-192822.yaml`: config before startup switched to GlazeSupervisor
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-27
+- **Startup now runs GlazeSupervisor instead of GlazeLauncher** (backup `config.before-supervisor-20261127-192822.yaml`).
+  The reload succeeded.
 - **Handed the workspace keys to GlazeLauncher and declared six workspace groups.** Removed the 18 `workspace.ps1` Alt+N /
   Alt+Shift+N bindings, the nine Ctrl+Alt+N bindings and Ctrl+Alt+R, and the `-Action Initialize` startup command. Renamed the
   anchors to `&group1_monitor` / `&group2_monitor` and added `31`–`69` with `&group3_monitor` … `&group6_monitor`.

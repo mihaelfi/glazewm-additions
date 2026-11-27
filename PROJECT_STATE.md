@@ -55,21 +55,22 @@ Each area doc has its current state, known issues, backups and its own change lo
 | Widget pack source | `C:\codex\glazewm\zebar-cpu\` | Solid + TypeScript + Vite with a Rust collector in `native/` |
 | GlazeWM installer | `C:\codex\glazewm\glazewm-v3.10.1.exe` | Version in use: GlazeWM 3.10.1 (not in Git) |
 | Launcher source | `C:\codex\glazewm\launcher\` | WPF, .NET 10 (`GlazeLauncher.csproj`) |
-| Installed launcher | `%USERPROFILE%\.glzr\launcher\` | Published output; GlazeWM starts it from here |
-| Launcher data | `%LOCALAPPDATA%\GlazeLauncher\` | `launcher.log`, `usage.json` (frecency), `workspace-merges.json`, `snapshot.png` (debug) |
+| Supervisor source | `C:\codex\glazewm\supervisor\` | Rust (`GlazeSupervisor.exe`); restarts the launcher after a crash or hang |
+| Installed launcher | `%USERPROFILE%\.glzr\launcher\` | Published output plus `GlazeSupervisor.exe`; GlazeWM starts the supervisor from here |
+| Launcher data | `%LOCALAPPDATA%\GlazeLauncher\` | `launcher.log`, `supervisor.log`, `usage.json` (frecency), `workspace-merges.json`, `snapshot.png` (debug) |
 
 Versions: GlazeWM 3.10.1, Zebar 3.3.1 (npm `zebar@3.3.1`), `glazewm@1.7.0` JS client, Solid 1.9, Vite 7, .NET SDK 10.0.115 (desktop runtime 10.0.15).
 
-Startup order (from GlazeWM's `startup_commands`): Zebar, then GlazeLauncher. Zebar's bar starts the collector itself
-when its feed fails.
+Startup order (from GlazeWM's `startup_commands`): Zebar, then GlazeSupervisor, which starts GlazeLauncher and restarts it
+after a crash or hang. Zebar's bar starts the collector itself when its feed fails.
 
 **Workspaces follow the monitors.** Each monitor owns nine workspaces (primary `11`–`19`, then `21`–`29` … left to right,
 up to six monitors). GlazeLauncher owns Alt+1…9, Alt+Shift+1…9 and Ctrl+Alt+R and keeps GlazeWM's config in step when
-monitors change, so those keys stop working if the launcher is down. Details: `docs/launcher.md` (Workspace manager).
+monitors change, so those keys stop working while the launcher is down. Details: `docs/launcher.md` (Workspace manager).
 
 ## Repository
 
-The `launcher/` and `zebar-cpu/` sources and these docs share one Git repository rooted at `C:\codex\glazewm`.
+The `launcher/`, `supervisor/` and `zebar-cpu/` sources and these docs share one Git repository rooted at `C:\codex\glazewm`.
 The public GitHub remote is [`mihaelfi/glazewm-additions`](https://github.com/mihaelfi/glazewm-additions), with `main` as the primary branch.
 It is public, so keep personal paths and data out of new commits where possible.
 
@@ -88,6 +89,7 @@ It is public, so keep personal paths and data out of new commits where possible.
 Area changes are logged in each area doc. Only changes that span the project go here. Newest first.
 
 ### 2026-11-27
+- **Added GlazeSupervisor** (`supervisor/`), now started by GlazeWM in place of the launcher. See `docs/launcher.md`.
 - **Moved the workspace keys and monitor handling from GlazeWM's config and `workspace.ps1` into GlazeLauncher.** See the
   2026-11-27 entries in `docs/launcher.md` and `docs/glazewm.md`.
 - **Split this file into area docs and a backlog.** `PROJECT_STATE.md` now holds only the overview, the rules and

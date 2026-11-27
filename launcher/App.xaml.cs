@@ -41,6 +41,8 @@ public partial class App : Application
         var command = ParseCommand(e.Args);
         // A replacement for a crashed instance: wait for the old one to go instead of talking to it.
         bool restart = e.Args.Contains("--restart");
+        // Started by GlazeSupervisor (repo folder supervisor/), which restarts this process after any crash or hang.
+        Supervised = e.Args.Contains("--supervised");
 
         if (!restart && Mutex.TryOpenExisting(MutexName, out var existing))
         {
@@ -89,7 +91,7 @@ public partial class App : Application
         }
 
         Log.Init();
-        Log.Info($"starting (pid {Environment.ProcessId}{(restart ? ", after a crash" : "")})");
+        Log.Info($"starting (pid {Environment.ProcessId}{(restart ? ", after a crash" : "")}{(Supervised ? ", supervised" : "")})");
 
         // A small list window doesn't need the GPU. Software rendering keeps the GPU driver
         // (tens of MB on NVIDIA) out of the process; drawing stays well under a frame.
@@ -179,12 +181,18 @@ public partial class App : Application
             args.SetObserved();
         };
 
+        // Under the supervisor, a second restarter would race it (and the supervisor would lose track of
+        // the process), so Windows' restart is only registered when running on our own.
+        if (Supervised) return;
         // "--detached": the restarted copy is started by Windows, not GlazeWM, so it has no handles to drop.
         // No restart after a reboot or an update: GlazeWM starts the launcher at login.
         // "--restart": if our own replacement got there first, this copy exits quietly instead of toggling it.
         int hr = Native.RegisterApplicationRestart("--detached --restart", Native.RESTART_NO_REBOOT | Native.RESTART_NO_PATCH);
         if (hr != 0) Log.Info($"RegisterApplicationRestart failed: 0x{hr:X8}");
     }
+
+    /// <summary>Started by GlazeSupervisor, which restarts the launcher; it must not start replacements itself.</summary>
+    private static bool Supervised { get; set; }
 
     private const int UiErrorLimit = 5;
     private static readonly TimeSpan UiErrorWindow = TimeSpan.FromSeconds(10);
@@ -193,6 +201,11 @@ public partial class App : Application
     /// ShellExecute, so the copy inherits none of our handles.</summary>
     private static void StartReplacement()
     {
+        if (Supervised)
+        {
+            Log.Info("supervised: the supervisor restarts the launcher");
+            return;
+        }
         TimeSpan uptime;
         using (var self = System.Diagnostics.Process.GetCurrentProcess()) uptime = DateTime.Now - self.StartTime;
         if (uptime < MinUptimeForRestart)
@@ -304,6 +317,10 @@ public partial class App : Application
                 break;
             case "debug:crash":
                 new Thread(() => throw new InvalidOperationException("debug:crash test")) { IsBackground = true }.Start();
+                break;
+            // Blocks the UI thread for 30 s, so the supervisor's hang detection can be tested.
+            case "debug:hang":
+                Dispatcher.BeginInvoke(new Action(() => Thread.Sleep(TimeSpan.FromSeconds(30))));
                 break;
         }
     }

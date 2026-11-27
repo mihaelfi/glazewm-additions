@@ -1,6 +1,6 @@
 # GlazeLauncher: workspace-aware app launcher
 
-Read this when you work on the launcher (`launcher/`). Ideas and bugs, including the planned
+Read this when you work on the launcher (`launcher/`) or its supervisor (`supervisor/`). Ideas and bugs, including the planned
 actions framework, are in [`backlog.md`](backlog.md#launcher).
 
 A resident WPF (.NET 10) app in `C:\codex\glazewm\launcher\`, installed to `%USERPROFILE%\.glzr\launcher\`,
@@ -95,7 +95,23 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
 - **Adding a provider.** Register it in `App.xaml.cs`. Search reads a cached snapshot and returns `ProviderResult` entries with a stable ID, match, optional hosting `WmWindow`, display fields, and an async activation callback. The engine ranks results centrally and the UI renders the supplied icon, text and key hints. Providers with `IRefreshableSearchProvider` update their cache asynchronously when the launcher opens. The browser provider uses the hosting window for workspace ranking and `Actions.FocusWindow` before selecting the tab. The tab cache holds titles and runtime IDs in memory, and frecency stores one key per browser.
 - **Launching** uses ShellExecute on `shell:AppsFolder\<id>`, which works for Win32 and Store apps alike.
 - **Detached relaunch:** started without `--detached`, the exe relaunches itself through ShellExecute (no handle inheritance) and exits. That's the same protection the Zebar collector has against keeping a parent's sockets alive.
-- **Crash recovery** (`InstallCrashHandling` in `App.xaml.cs`):
+- **Supervisor** (`supervisor/main.rs`, Rust, `GlazeSupervisor.exe`, about 180 KB and 1 MB private memory). GlazeWM starts
+  it instead of the launcher. It relaunches itself without inherited handles, keeps one instance (mutex
+  `Local\GlazeLauncher.Supervisor`), and starts `GlazeLauncher.exe --detached --supervised` from its own folder, then waits
+  on the process handle:
+  - exit code 0 (Quit, or `--quit` before a deploy): the supervisor exits too;
+  - any other exit (crash, killed): restart at once; repeats within 2 min wait 2 s, 10 s, then 60 s;
+  - every 2 s, `IsHungAppWindow` on the launcher's top-level windows (Windows' "not responding": no message processing
+    for 5 s); three hung checks in a row end the process (exit code `0xDEAD`) and it restarts. A hang is caught about
+    11 s after it starts.
+  - A launcher already running when the supervisor starts is asked to quit over the pipe (ended after 5 s if it doesn't) and
+    replaced by a supervised one.
+  - The hotkeys stay in the launcher (decided 2026-11-27: the supervisor doesn't own them, so key presses never pass
+    through it and Windows' foreground rules are unaffected). A key pressed during the few seconds of a hang is lost.
+  - Log: `%LOCALAPPDATA%\GlazeLauncher\supervisor.log` (removed at start when over 256 KB).
+- **Crash recovery inside the launcher** (`InstallCrashHandling` in `App.xaml.cs`). Under the supervisor (`--supervised`)
+  the launcher only logs and exits; it starts no replacement and doesn't register Windows' restart, because a second
+  restarter would race the supervisor. Without the supervisor (started by hand) it recovers on its own as follows:
   - An error on the UI thread is logged and skipped. Five within 10 s means the UI is stuck failing, so the launcher starts a
     replacement and exits.
   - An error on a background thread ends the process (.NET can't stop that); the handler logs it and starts a replacement first.
@@ -105,13 +121,14 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
   - `RegisterApplicationRestart("--detached --restart")` asks Windows to restart it after native crashes and hangs as well.
     **Windows Error Reporting is disabled on this PC** (`HKLM\…\Windows Error Reporting\Disabled = 1`), so that layer does
     nothing here; it helps on PCs where it's on. The `--restart` rule keeps the two from ending up with two copies.
-  - Not covered yet: native crashes and hangs on this PC, and being killed. That's the planned supervisor's job (backlog).
+  - Doesn't cover native crashes, hangs or being killed on this PC; the supervisor does.
 - **Command line:** `GlazeLauncher.exe --toggle|--show|--hide|--reindex|--sync|--quit` forwards the command to the running instance over the pipe. With no argument a second start toggles.
 - **Debug pipe commands** (send them with a `NamedPipeClientStream` to `GlazeLauncher`, not available as exe flags): `query:<text>` types a query,
   `enter`, `enter:ctrl` or `enter:shift` activates the selection, and `snapshot` renders the window to `%LOCALAPPDATA%\GlazeLauncher\snapshot.png`.
   `ws:focus:N` and `ws:move:N` run the Alt+N and Alt+Shift+N actions (they use the current foreground window, so make
   sure the right window is in front). For crash-recovery tests: `debug:throw` raises an error on the UI thread, and `debug:crash` crashes a background thread
-  (the launcher really ends; a replacement starts only after the first 60 s).
+  (the launcher really ends; a replacement starts only after the first 60 s). `debug:hang` blocks the UI thread for 30 s,
+  to test the supervisor's hang detection.
 - **Rendering is software-only** (`RenderMode.SoftwareOnly`), and concurrent GC is off. GPU rendering loaded the NVIDIA driver into the process: about 113 → 77 MB private memory after a search. Working set is about 170 MB, mostly shared WPF DLL pages.
 - **Without GlazeWM** the launcher still starts and searches apps (noticed 2026-11-27, not designed for). What works and what should happen in that mode is in the backlog.
 
@@ -120,12 +137,17 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
 ```powershell
 cd C:\codex\glazewm\launcher
 dotnet publish -c Release -r win-x64 --self-contained false -o publish   # ReadyToRun, framework-dependent
-GlazeLauncher.exe --quit        # from %USERPROFILE%\.glzr\launcher (or Stop-Process -Name GlazeLauncher)
-Copy-Item publish\* $env:USERPROFILE\.glzr\launcher -Force
+cd ..\supervisor
+cargo build --release --offline                                          # only if supervisor/ changed
+& $env:USERPROFILE\.glzr\launcher\GlazeLauncher.exe --quit                # exit code 0: the supervisor exits too
+Copy-Item ..\launcher\publish\* $env:USERPROFILE\.glzr\launcher -Force
+Copy-Item target\release\GlazeSupervisor.exe $env:USERPROFILE\.glzr\launcher -Force   # only if it changed
 ```
 
-Back up the installed folder first as `.glzr\launcher\before-<change>-<timestamp>\`. Then start it again
-(or reload GlazeWM's startup by restarting GlazeWM).
+Back up the installed folder first as `.glzr\launcher\before-<change>-<timestamp>\`. Then start the **supervisor** again
+(it starts the launcher). From an agent's shell, have GlazeWM start it, so it runs outside the Claude app's package:
+send `command shell-exec %USERPROFILE%/.glzr/launcher/GlazeSupervisor.exe` over GlazeWM IPC. Don't use `Stop-Process`
+on the launcher to deploy: a non-zero exit makes the supervisor restart it straight away, with the exe still locked.
 
 **Testing gotcha (agents):** the Claude desktop app is an MSIX package. Processes started from its shell
 run inside that package, so their writes to `%LOCALAPPDATA%` are redirected to
@@ -143,8 +165,9 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
   may need an entry in `PackagedProcessAliases`.
 - Browser tab search depends on the tab controls Chrome and Edge expose through accessibility. Fullscreen and collapsed tab groups have not been checked.
 - Minimized windows are sometimes missing from results (needs a repro). Tracked in the backlog.
-- **The workspace keys need the launcher.** If it's down (a native crash or hang isn't recovered on this PC yet), Alt+N,
-  Alt+Shift+N and Ctrl+Alt+R do nothing until it's started again. The supervisor in the backlog is meant to fix that.
+- **The workspace keys need the launcher.** The supervisor restarts it after any crash at once and after a hang in about
+  11 s; keys pressed in between do nothing. If the supervisor itself isn't running (Quit, or it was never started), a
+  crash leaves the keys dead until GlazeWM is restarted or the supervisor is started again.
 - Workspace manager, checked by the user on 2026-11-27: the real keys, the snappier Alt+N, "PC screen only", "Second screen
   only" (the primary going away) and back to Extend, with merge and restore. Not yet checked: three or more monitors, and
   merges where the target slot already has windows on a real display change (the "moved" path; only seen in the first test).
@@ -168,12 +191,23 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-minimized-and-goto-20261127-181846\`: before minimized-window restore and the go-to-workspace result
 - `.glzr\launcher\before-crash-recovery-20261127-182352\`: before crash recovery
 - `.glzr\launcher\before-workspace-manager-20261127-185520\`: before the workspace manager
+- `.glzr\launcher\before-supervisor-20261127-192822\`: before the supervisor
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-27
+- **Added GlazeSupervisor**, a small Rust watcher in the new `supervisor/` folder, installed next to the launcher. GlazeWM now
+  starts it, and it starts the launcher with `--supervised`, restarts it after a crash or a kill (with backoff), ends and
+  restarts it when Windows reports it hung, and exits when the launcher quits normally. In supervised mode, `App.xaml.cs`
+  starts no replacement of its own and doesn't register Windows' restart. New `debug:hang` pipe command.
+  - Chose the watcher over a supervisor that owns the hotkeys (the user agreed): no extra hop on key presses and no
+    foreground-rights hand-off.
+  - Checked with the supervisor started by GlazeWM: `debug:crash` restarted at once (`0xE0434352`); `Stop-Process` restarted
+    after the 2 s backoff; `debug:hang` was reported not responding three times 2 s apart and ended about 11 s into the hang,
+    then restarted after the 10 s backoff; Quit made the supervisor exit; starting the supervisor while an unsupervised
+    launcher ran replaced it with a supervised one. The supervised launcher registered all hotkeys and synced.
 - **Added the workspace manager and took over the workspace keys.** New `WorkspaceManager.cs` (groups for up to six
   monitors, target monitor from the foreground window or cursor, Alt+N, Alt+Shift+N, automatic sync with merge and restore).
   `App.xaml.cs` registers Alt+1…9, Alt+Shift+1…9 and Ctrl+Alt+R while GlazeWM is connected, and adds `--sync` and the
