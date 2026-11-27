@@ -11,7 +11,7 @@ export type DriveActivityMode = 'none' | 'marks' | 'rates';
 export interface Settings {
   /** How far back graphs, heatmaps and process averages look. */
   historyMinutes: number;
-  bar: { storage: boolean; ram: boolean; cpu: boolean; gpu: boolean };
+  bar: { storage: boolean; ram: boolean; cpu: boolean; gpu: boolean; network: boolean };
   /** Drive letters to show. `null` shows every drive, including ones added later. */
   drives: string[] | null;
   /** Activity shown on the bar. Missing letters show capacity only. */
@@ -28,7 +28,7 @@ export const HISTORY_CHOICES = [1, 5, 10, 15];
 
 export const DEFAULT_SETTINGS: Settings = {
   historyMinutes: 1,
-  bar: { storage: true, ram: true, cpu: true, gpu: true },
+  bar: { storage: true, ram: true, cpu: true, gpu: true, network: true },
   drives: null,
   driveActivity: {},
   gpuAdapter: null,
@@ -70,7 +70,12 @@ export function useSettings() {
   function apply(snapshot: SettingsSnapshot) {
     version = snapshot.version;
     const format = snapshot.settings.clockFormat ?? '';
-    setSettings({ ...DEFAULT_SETTINGS, ...snapshot.settings, clockFormat: validClockFormat(format) ? format : DEFAULT_CLOCK_FORMAT });
+    setSettings({
+      ...DEFAULT_SETTINGS,
+      ...snapshot.settings,
+      bar: { ...DEFAULT_SETTINGS.bar, ...snapshot.settings.bar },
+      clockFormat: validClockFormat(format) ? format : DEFAULT_CLOCK_FORMAT,
+    });
   }
 
   async function refresh() {

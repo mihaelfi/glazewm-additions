@@ -2,11 +2,12 @@ import { createEffect, createMemo, For, Show } from 'solid-js';
 import { render } from 'solid-js/web';
 import { shellSpawn } from 'zebar';
 import { useCloseActivityPanel } from './activity-panel';
-import { DriveHistoryGraph } from './drive-history-graph';
 import { useDriveHistoryFeed } from './metrics-feed';
 import { PanelHeader } from './panel-header';
 import { formatWindow, showsDrive, useSettings } from './settings';
 import { driveLevel, formatDriveRate, formatDriveSize, useDrives, type Drive } from './drives';
+import { ThroughputGraph } from './throughput-graph';
+import { throughputCeiling } from './throughput';
 import './widget.css';
 import './storage.css';
 
@@ -37,9 +38,7 @@ function StoragePanel() {
         peak = Math.max(peak, rate?.read ?? 0, rate?.write ?? 0);
       }
     }
-    const magnitude = 10 ** Math.floor(Math.log10(peak));
-    const step = [1, 2, 5, 10].find(value => peak <= value * magnitude) ?? 10;
-    return step * magnitude;
+    return throughputCeiling(peak);
   });
 
   function openDrive(drive: Drive) {
@@ -49,10 +48,10 @@ function StoragePanel() {
   }
 
   return (
-    <main class="panel storage-panel storage-frame" aria-labelledby="storage-title">
+    <main class="panel storage-panel popup-frame" aria-labelledby="storage-title">
       <PanelHeader id="storage-title" title="Storage" onClose={close} />
 
-      <div class="storage-overview storage-frame">
+      <div class="storage-overview popup-frame">
         <div><strong>{drives().length ? formatDriveSize(totals().free) : '—'}</strong> free</div>
         <div><strong>{drives().length ? formatDriveSize(totals().total) : '—'}</strong> total</div>
         <div>
@@ -65,11 +64,11 @@ function StoragePanel() {
       </div>
 
       <Show when={drives().length} fallback={<p class="process-status" role="status">Loading drives…</p>}>
-        <div class="storage-legend" aria-label="Shared graph scale">
+        <div class="throughput-legend" aria-label="Shared graph scale">
           <span>Last {formatWindow(historySeconds())}</span>
-          <span class="drive-read">Read</span>
-          <span class="drive-write">Write</span>
-          <span class="storage-scale">
+          <span class="throughput-key drive-read">Read</span>
+          <span class="throughput-key drive-write">Write</span>
+          <span class="throughput-scale">
             {status() === 'unavailable' ? 'Collector unavailable' : `${formatDriveRate(ceiling())} max`}
           </span>
         </div>
@@ -78,7 +77,7 @@ function StoragePanel() {
             {drive => (
               <li>
                 <button
-                  class={`drive-row storage-frame ${driveLevel(drive)}`}
+                  class={`drive-row popup-frame ${driveLevel(drive)}`}
                   type="button"
                   title={`Open ${drive.root} in File Explorer`}
                   onClick={() => openDrive(drive)}
@@ -91,7 +90,13 @@ function StoragePanel() {
                     <span class="drive-filesystem" title={drive.removable ? `${drive.fileSystem} · removable` : undefined}>{drive.fileSystem}</span>
                   </span>
                   <i class="drive-row-meter" aria-hidden="true" style={{ '--used': `${drive.used}%` }} />
-                  <DriveHistoryGraph letter={drive.letter} samples={samples()} length={historySeconds()} ceiling={ceiling()} />
+                  <ThroughputGraph
+                    class="drive-history-graph" samples={samples()} length={historySeconds()} ceiling={ceiling()}
+                    series={[
+                      { color: '--drive-read', value: sample => sample.driveRates?.[drive.letter]?.read },
+                      { color: '--drive-write', value: sample => sample.driveRates?.[drive.letter]?.write },
+                    ]}
+                  />
                   <span class="drive-row-activity">
                     <span><span class="drive-read">Read</span> <strong>{formatDriveRate(driveRates()?.[drive.letter]?.read)}</strong></span>
                     <span><span class="drive-write">Write</span> <strong>{formatDriveRate(driveRates()?.[drive.letter]?.write)}</strong></span>

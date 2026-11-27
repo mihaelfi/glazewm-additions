@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, Match, Switch } from 'solid-js';
 import { createProvider, type Disk } from 'zebar';
 import type { DriveRates } from './metrics-feed';
 import type { DriveActivityMode } from './settings';
+import { throughputParts, withUnit } from './throughput';
 
 // Free space changes slowly, so drives refresh once a minute rather than every second.
 const REFRESH_MS = 60_000;
@@ -18,21 +19,10 @@ export function formatDriveSize(bytes: number) {
   return `${(bytes / gibibyte).toFixed(1)} GB`;
 }
 
-function driveRateParts(bytes: number | null | undefined) {
-  if (bytes == null) return { value: '—', unit: '' };
-  let rate = bytes;
-  let unit = 0;
-  while (rate >= 999.5 && unit < rateUnits.length - 1) {
-    rate /= 1000;
-    unit++;
-  }
-  const value = rate >= 999.5 ? '999+' : String(Number(rate.toPrecision(3)));
-  return { value, unit: rateUnits[unit] };
-}
+const driveRateParts = (bytes: number | null | undefined) => throughputParts(bytes, rateUnits);
 
 export function formatDriveRate(bytes: number | null | undefined) {
-  const { value, unit } = driveRateParts(bytes);
-  return unit ? `${value} ${unit}` : value;
+  return withUnit(driveRateParts(bytes));
 }
 
 export interface Drive {

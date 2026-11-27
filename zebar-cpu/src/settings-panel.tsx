@@ -13,6 +13,7 @@ const barItems: { key: BarItem; label: string }[] = [
   { key: 'ram', label: 'RAM' },
   { key: 'cpu', label: 'CPU' },
   { key: 'gpu', label: 'GPU' },
+  { key: 'network', label: 'Network' },
 ];
 
 function SettingsPanel() {

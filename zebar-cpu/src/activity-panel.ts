@@ -7,6 +7,7 @@ export const panelHeights = {
   'ram-activity': 620,
   'gpu-activity': 700,
   'storage-activity': 470,
+  'network-activity': 470,
   clock: 492,
   settings: 660,
 };

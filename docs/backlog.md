@@ -204,11 +204,11 @@ Items:
 
 ## Zebar: network
 
-- **Network widget** · `idea` · M–L. Collector side: per-interface byte counters, connection state and type (Wi-Fi or cable) from the
-  Windows interface table, which is cheap to read every second. Bar: one card with a connection icon (Wi-Fi, cable or offline) and
-  upload and download sparklines for total traffic; it could replace the current Wi-Fi SSID item. Popup: per-interface rates, IP and
-  SSID, and accumulated totals. To decide: which interfaces count by default (physical ones that are up; hide Hyper-V, WSL and VPN
-  adapters unless chosen in Settings), and whether totals survive restarts (needs a small file, like the timer).
+- **Network widget** · `done` 2026-11-27. Replaced the bar's Wi-Fi text with a link icon and fixed-width total
+  upload and download rates. The popup shows per-adapter traffic history, live rates, local IP and the
+  available SSID for active physical Wi-Fi and Ethernet. The bar indicator sits immediately left of the clock.
+- **Network adapter options and cumulative totals** · `idea`. Consider a separate virtual/VPN
+  breakdown and decide whether traffic totals should survive collector restarts.
 
 ## Zebar: settings
 

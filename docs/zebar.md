@@ -19,6 +19,7 @@ pack `cpu-activity`, widget `bar`, preset `default` (backup: `settings.before-cp
 | `gpu-activity` | `dist/gpu.html` | 576 × 700, top-right, `top_most`, focused | GPU details pop-up |
 | `settings` | `dist/settings.html` | 576 × 660, top-right, `top_most`, focused | Settings pop-up, opened from the gear in any popup |
 | `storage-activity` | `dist/storage.html` | 576 × 470, top-right, `top_most`, focused | Storage details pop-up; may launch `explorer.exe` with a drive root |
+| `network-activity` | `dist/network.html` | 576 × 470, top-right, `top_most`, focused | Network rates and adapter history |
 | `clock` | `dist/clock.html` | 384 × 492, top-right, `top_most`, focused | Month calendar and persistent timer |
 
 The bar opens the panels with `startWidget` on the bar's own monitor
@@ -48,9 +49,9 @@ path when you deploy (or check that the relative one works first).
 ## Bar layout (`src/bar.tsx`)
 
 Left: a brand mark (four dots), then the workspace buttons. Right, in order (fixed by the "widget reorder" change):
-paused indicator and binding-mode buttons (shown only when active) → Wi-Fi SSID → battery →
+paused indicator and binding-mode buttons (shown only when active) → battery →
 **storage card** → **RAM** (sparkline + % ) → **CPU** (heatmap + %) → **GPU** (green sparkline + %) → tiling-direction toggle (↔/↕) →
-weather (°C) → input language → clock (default `yyyy-MM-dd HH:mm`).
+weather (°C) → input language → **network** (connection icon and live rates) → clock (default `yyyy-MM-dd HH:mm`).
 
 - **Input language** is shortened to the first part of the layout code, in upper case (e.g. `en-US` → `EN`).
 - Clicking a workspace runs `focus --workspace <name>`. Clicking the tiling toggle runs `toggle-tiling-direction`.
@@ -129,6 +130,17 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
   drive window open.
 - This PC: C 3.6 TB, D 1.8 TB, E 3.6 TB, F 16 TB (external), G 7.3 TB (98% used, shows red), H 7.3 TB.
 
+## Network (`src/network.tsx`, `src/network-panel.tsx`)
+
+- Immediately to the left of the clock, the bar shows a Wi-Fi, Ethernet, or disconnected icon plus fixed-width download and upload rates
+  in bits per second. The default physical interface sets the icon when known, with Ethernet taking
+  precedence when the default route does not match an active physical adapter. The Wi-Fi SSID is in the tooltip.
+- The popup shows aggregate rates and one tile per active physical adapter. Each tile shows the local IP,
+  the Wi-Fi SSID when available, current rates and a history graph. Download is sky blue and upload is
+  amber. The popup shares its frame, chart rendering and history setting with Storage.
+- The collector samples traffic and maintains the history. Zebar's existing `network` provider supplies
+  the default interface, local IP addresses and the SSID. Network is enabled by default in Settings.
+
 ## Clock, calendar and timer (`src/clock-panel.tsx`, `src/clock.ts`, `src/timer.ts`; collector side in `native/timer.rs`)
 
 - The far-right clock button opens on the bar's monitor with Calendar selected. The popup shows local time with seconds, a locale-aware month grid with Today and month navigation, a Timer tab, and a link to shared Settings.
@@ -149,7 +161,7 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
   | `clockFormat` | Luxon format preset or custom string | `yyyy-MM-dd HH:mm` | Date and time on the bar. Settings includes a live preview and a syntax tooltip |
   | `repeatTimerChime` | boolean | `true` | Repeat the expiry chime until dismissal. Off plays it once |
   | `historyMinutes` | 1, 5, 10, 15 | 1 | Window for every graph, heatmap, "N ago" label and the CPU process Avg/Peak |
-  | `bar.storage/ram/cpu/gpu` | booleans | all `true` | Which cards the bar shows. At least one must stay, because the cards are the only way into the popups (enforced in the UI and the collector) |
+  | `bar.storage/ram/cpu/gpu/network` | booleans | all `true` | Which cards the bar shows. At least one must stay, because the cards are the only way into the popups (enforced in the UI and the collector) |
   | `drives` | letters or `null` | `null` = all | Drives in the storage card **and** popup. Selecting every drive saves `null`, so drives added later show up |
   | `driveActivity` | drive letter → `marks` or `rates` | empty | Bar activity display per drive. Missing letters are **None**. Hiding a drive keeps its activity preference |
   | `gpuAdapter` | adapter name or `null` | `null` = most video memory | GPU the bar's GPU card follows. The GPU popup also opens on that tab |
@@ -193,6 +205,8 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 
 ## Known issues and unverified
 
+- Zebar provides the SSID for the default Wi-Fi interface. Other active Wi-Fi adapters still show
+  traffic history and any local addresses the provider supplies.
 - Check how many Live rates readouts fit on a narrow monitor with several workspaces and all other status cards enabled.
 - Check native clock popup placement and dismissal on both monitors, and listen for the chime on the desktop.
 - **Not yet portable:** the installed `zpack.json` uses the absolute collector path `C:\Users\mihae\...`. Zebar matches the program as an exact string, so a relative path can't work; the planned install script writes the real path (see the backlog's install script item).
@@ -200,6 +214,10 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 
 ## Backups
 
+- `.glzr\zebar\cpu-activity\dist.before-network-position-20261127-212520`: installed assets before moving Network beside the clock.
+- `.glzr\zebar\cpu-activity\dist.before-network-widget-20261127-212106`,
+  `zebar-cpu-collector.exe.before-network-widget-20261127-212106`, and
+  `zpack.json.before-network-widget-20261127-212106`: installed assets, collector, and manifest before Network.
 - `.glzr\zebar\cpu-activity\dist.before-disk-history-20261127-210028` and
   `zebar-cpu-collector.exe.before-disk-history-20261127-210028`: assets and collector before disk history.
 - `.glzr\zebar\cpu-activity\dist.before-drive-meter-contrast-20261127-203606`: installed assets before the bar meter contrast change.
@@ -217,6 +235,14 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 Newest first. Covers the whole pack, front end and collector.
 
 ### 2026-11-27
+- **Moved Network immediately left of the clock** in `src/bar.tsx`. Verified the position and deployed the rebuilt assets.
+- **Added the Network widget.** `src/network.tsx` and `src/bar.tsx` show the link icon and compact
+  rates. `network.html`, `src/network-panel.tsx`, `src/network.css`, `src/activity-panel.ts`,
+  `vite.config.ts` and both widget manifests add the popup. Moved the Storage frame styles and
+  throughput graph into shared components, added the Settings toggle, and used the collector's
+  new network history view in `src/metrics-feed.ts`. Deployed the widget and verified the live
+  history feed. Browser checks covered Wi-Fi, Ethernet, disconnected and unavailable states,
+  fixed-width rates, SSID, IP, history graphs, Settings, and the existing Storage layout.
 - **Added disk activity history to the Storage popup.** `src/storage-panel.tsx`, `src/storage.css` and
   `src/drive-history-graph.tsx` render the adaptive grid. `src/history-graph.tsx` shares canvas setup,
   and `src/metrics-feed.ts` requests the disk history view of the existing feed. The [collector](zebar-collector.md)

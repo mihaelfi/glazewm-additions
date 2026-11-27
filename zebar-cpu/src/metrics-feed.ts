@@ -35,6 +35,32 @@ export interface DriveHistorySample {
   driveRates: DriveRates;
 }
 
+export type NetworkKind = 'ethernet' | 'wifi';
+
+export interface NetworkAdapter {
+  id: string;
+  name: string;
+  kind: NetworkKind;
+}
+
+export interface NetworkThroughput {
+  download: number | null;
+  upload: number | null;
+}
+
+type NetworkRates = Partial<Record<string, NetworkThroughput>>;
+
+export interface NetworkHistorySample {
+  sequence: number;
+  rates: NetworkRates;
+}
+
+interface NetworkSnapshot {
+  adapters: NetworkAdapter[];
+  rates: NetworkRates;
+  total: NetworkThroughput;
+}
+
 export interface MetricsSample {
   sequence: number;
   total: number;
@@ -54,6 +80,7 @@ interface MetricsHistory<Sample> {
   timer?: Timer | null;
   gpus?: GpuAdapter[];
   driveRates?: DriveRates;
+  network?: NetworkSnapshot | null;
   samples: Sample[];
 }
 
@@ -84,6 +111,10 @@ export function useDriveHistoryFeed(historySeconds: Accessor<number>) {
   return useHistoryFeed<DriveHistorySample>(historySeconds, false, '&view=drives');
 }
 
+export function useNetworkHistoryFeed(historySeconds: Accessor<number>) {
+  return useHistoryFeed<NetworkHistorySample>(historySeconds, false, '&view=network');
+}
+
 function useHistoryFeed<Sample extends { sequence: number }>(
   historySeconds: Accessor<number>,
   startCollector: boolean,
@@ -93,6 +124,7 @@ function useHistoryFeed<Sample extends { sequence: number }>(
   const [status, setStatus] = createSignal<FeedStatus>('starting');
   const [gpus, setGpus] = createSignal<GpuAdapter[]>([]);
   const [driveRates, setDriveRates] = createSignal<DriveRates>();
+  const [network, setNetwork] = createSignal<NetworkSnapshot>();
   const [settingsVersion, setSettingsVersion] = createSignal<number>();
   const [activeTimer, setActiveTimer] = createSignal<Timer | null>(null, {
     equals: (previous, next) => previous?.deadlineMs === next?.deadlineMs
@@ -134,6 +166,7 @@ function useHistoryFeed<Sample extends { sequence: number }>(
         lastSequence = newest.sequence;
         lastSampleAt = performance.now();
         setDriveRates(history.driveRates);
+        setNetwork(history.network ?? undefined);
         setStatus('live');
       } else if (lastSampleAt === 0 || performance.now() - lastSampleAt > 3000) {
         setStatus(lastSampleAt === 0 ? 'starting' : 'unavailable');
@@ -177,5 +210,6 @@ function useHistoryFeed<Sample extends { sequence: number }>(
     settingsVersion,
     activeTimer,
     driveRates: () => status() === 'live' ? driveRates() : undefined,
+    network: () => status() === 'live' ? network() : undefined,
   };
 }

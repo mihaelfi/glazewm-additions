@@ -2,6 +2,7 @@
 
 mod drive_io;
 mod gpu;
+mod network;
 mod pdh;
 mod processes;
 mod settings;
@@ -41,6 +42,8 @@ struct Sample {
     gpu: Vec<gpu::GpuSample>,
     #[serde(skip)]
     drive_rates: drive_io::Rates,
+    #[serde(skip)]
+    network_rates: network::Rates,
 }
 
 #[derive(Serialize)]
@@ -59,6 +62,7 @@ struct History<'a> {
     gpus: &'a [gpu::AdapterInfo],
     #[serde(rename = "driveRates")]
     drive_rates: &'a drive_io::Rates,
+    network: &'a Option<network::Snapshot>,
     samples: HistorySamples<'a>,
 }
 
@@ -67,6 +71,7 @@ struct History<'a> {
 enum HistorySamples<'a> {
     Metrics(Vec<&'a Sample>),
     Drives(Vec<DriveSample<'a>>),
+    Network(Vec<NetworkSample<'a>>),
 }
 
 #[derive(Serialize)]
@@ -76,6 +81,12 @@ struct DriveSample<'a> {
     drive_rates: &'a drive_io::Rates,
 }
 
+#[derive(Serialize)]
+struct NetworkSample<'a> {
+    sequence: u64,
+    rates: &'a network::Rates,
+}
+
 struct State {
     session: u64,
     history: VecDeque<Sample>,
@@ -83,6 +94,8 @@ struct State {
     processes: processes::ProcessSampler,
     gpu: Option<gpu::GpuSampler>,
     disk: Option<drive_io::Sampler>,
+    network_sampler: network::Sampler,
+    network: Option<network::Snapshot>,
     settings: settings::SettingsStore,
     timer: timer::TimerStore,
 }
@@ -121,6 +134,8 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         ),
         gpu: gpu::GpuSampler::new(),
         disk: drive_io::Sampler::new(),
+        network_sampler: network::Sampler::default(),
+        network: None,
         settings: settings::SettingsStore::load(),
         timer: timer::TimerStore::load(),
     };
@@ -133,7 +148,8 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         let now = Instant::now();
         if now >= sample_at {
             state.timer.tick(state.settings.settings.repeat_timer_chime);
-            let State { system, history, gpu, disk, processes, .. } = &mut state;
+            state.network = state.network_sampler.sample();
+            let State { system, history, gpu, disk, processes, network, .. } = &mut state;
             system.refresh_cpu_usage();
             system.refresh_memory_specifics(MemoryRefreshKind::nothing().with_ram());
             processes.sample();
@@ -159,6 +175,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                     },
                     gpu: gpu.as_mut().map(gpu::GpuSampler::sample).unwrap_or_default(),
                     drive_rates: disk.as_mut().map(drive_io::Sampler::sample).unwrap_or_default(),
+                    network_rates: network.as_ref().map(|snapshot| snapshot.rates.clone()).unwrap_or_default(),
                 });
             }
             sample_at = now + SAMPLE_INTERVAL;
@@ -280,13 +297,16 @@ fn serve_metrics(mut request: Request, state: &mut State) -> Result<bool, serde_
         let first = state.history.partition_point(|sample| sample.sequence <= after)
             .max(state.history.len().saturating_sub(limit));
         let samples = state.history.range(first..);
-        let samples = if parameter("view") == Some("drives") {
-            HistorySamples::Drives(samples.map(|sample| DriveSample {
+        let samples = match parameter("view") {
+            Some("drives") => HistorySamples::Drives(samples.map(|sample| DriveSample {
                 sequence: sample.sequence,
                 drive_rates: &sample.drive_rates,
-            }).collect())
-        } else {
-            HistorySamples::Metrics(samples.collect())
+            }).collect()),
+            Some("network") => HistorySamples::Network(samples.map(|sample| NetworkSample {
+                sequence: sample.sequence,
+                rates: &sample.network_rates,
+            }).collect()),
+            _ => HistorySamples::Metrics(samples.collect()),
         };
         let empty = drive_io::Rates::new();
         serde_json::to_vec(&History {
@@ -295,6 +315,7 @@ fn serve_metrics(mut request: Request, state: &mut State) -> Result<bool, serde_
             timer: state.timer.active,
             gpus: state.gpu.as_ref().map_or(&[], |gpu| &gpu.adapters),
             drive_rates: state.history.back().map_or(&empty, |sample| &sample.drive_rates),
+            network: &state.network,
             samples,
         })?
     };

@@ -7,6 +7,7 @@ import { describeDrive, describeDriveActivity, DriveBars, useDrives } from './dr
 import { Heatmap } from './heatmap';
 import { HistoryGraph } from './history-graph';
 import { memoryPercent, useMetricsFeed } from './metrics-feed';
+import { adapterSsid, formatNetworkRate, mainNetworkAdapter, NetworkBarRate, NetworkIcon, networkKindLabel, useNetworkDetails } from './network';
 import { type BarItem, driveActivityMode, formatWindow, gpuIndex, showsDrive, useSettings } from './settings';
 import { clearTimer, elapsedPercent, isOverdue, timerChanged, timerLabel } from './timer';
 import { appsInWorkspace, watchWorkspaceApps, type WorkspaceApp } from './workspace-apps';
@@ -17,14 +18,13 @@ import './workspace-icons.css';
 function Bar() {
   const glazewm = createProvider({ type: 'glazewm' });
   const keyboard = createProvider({ type: 'keyboard', refreshInterval: 1000 });
-  const network = createProvider({ type: 'network' });
+  const connection = useNetworkDetails();
   const battery = createProvider({ type: 'battery' });
   const weather = createProvider({ type: 'weather' });
   const [wm, setWm] = createSignal(glazewm.output);
   const [workspaceApps, setWorkspaceApps] = createSignal<Map<string, WorkspaceApp[]> | null>(null);
   const now = useClockTime();
   const [inputLanguage, setInputLanguage] = createSignal(keyboard.output);
-  const [connection, setConnection] = createSignal(network.output);
   const [charge, setCharge] = createSignal(battery.output);
   const [forecast, setForecast] = createSignal(weather.output);
   const [panelError, setPanelError] = createSignal<PanelName>();
@@ -32,7 +32,7 @@ function Bar() {
   const [acknowledging, setAcknowledging] = createSignal(false);
   const { settings, sync } = useSettings();
   const historySeconds = () => settings().historyMinutes * 60;
-  const { samples, status, gpus, settingsVersion, activeTimer, driveRates } = useMetricsFeed(true, historySeconds);
+  const { samples, status, gpus, settingsVersion, activeTimer, driveRates, network } = useMetricsFeed(true, historySeconds);
   createEffect(() => sync(settingsVersion()));
   const panels = usePanelToggle();
   const allDrives = useDrives();
@@ -43,11 +43,16 @@ function Bar() {
     : `${describeDrive(drive)}. ${describeDriveActivity(driveRates()?.[drive.letter])}`).join('. ');
   const shows = (item: BarItem) => settings().bar[item];
   const windowLabel = () => `last ${formatWindow(historySeconds())}`;
+  const networkAdapter = createMemo(() => mainNetworkAdapter(network()?.adapters ?? [], connection()));
+  const networkTitle = () => {
+    const adapter = networkAdapter();
+    if (!adapter) return network() ? 'No active Wi-Fi or Ethernet' : 'Network data unavailable';
+    return adapterSsid(adapter, connection()) ?? networkKindLabel(adapter.kind);
+  };
 
   glazewm.onOutput(setWm);
   onCleanup(watchWorkspaceApps(setWorkspaceApps));
   keyboard.onOutput(setInputLanguage);
-  network.onOutput(setConnection);
   battery.onOutput(setCharge);
   weather.onOutput(setForecast);
 
@@ -172,9 +177,6 @@ function Bar() {
             </button>
           )}
         </For>
-        <Show when={connection()?.defaultGateway?.ssid}>
-          {ssid => <span class="bar-stat network" title={ssid()}>{ssid()}</span>}
-        </Show>
         <Show when={charge()}>
           {value => (
             <span class="bar-stat battery" title={`Battery ${value().state}`}>
@@ -273,6 +275,22 @@ function Bar() {
               {layout().split(/[-_]/, 1)[0].toUpperCase()}
             </span>
           )}
+        </Show>
+        <Show when={shows('network')}>
+          <button
+            class="metric-button network-button"
+            aria-haspopup="dialog"
+            aria-label={`${networkTitle()}. Download ${formatNetworkRate(network()?.total.download)}. Upload ${formatNetworkRate(network()?.total.upload)}. Open network activity.`}
+            title={panelError() === 'network-activity' ? 'Network activity could not open. Click to retry.' : `${networkTitle()}. Click for details.`}
+            onPointerDown={() => panels.press('network-activity')}
+            onClick={() => void togglePanel('network-activity')}
+          >
+            <NetworkIcon kind={networkAdapter()?.kind} />
+            <span class="network-bar-rates">
+              <NetworkBarRate direction="download" bytes={network()?.total.download} />
+              <NetworkBarRate direction="upload" bytes={network()?.total.upload} />
+            </span>
+          </button>
         </Show>
         <button
           class="clock-button"

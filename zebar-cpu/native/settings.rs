@@ -47,6 +47,7 @@ pub struct BarItems {
     pub ram: bool,
     pub cpu: bool,
     pub gpu: bool,
+    pub network: bool,
 }
 
 impl Default for Settings {
@@ -62,7 +63,7 @@ impl Default for Settings {
 
 impl Default for BarItems {
     fn default() -> Self {
-        Self { storage: true, ram: true, cpu: true, gpu: true }
+        Self { storage: true, ram: true, cpu: true, gpu: true, network: true }
     }
 }
 
@@ -74,7 +75,7 @@ impl Settings {
         }
         let bar = &self.bar;
         // The bar items are the only way into the popups, so never hide them all.
-        if !(bar.storage || bar.ram || bar.cpu || bar.gpu) {
+        if !(bar.storage || bar.ram || bar.cpu || bar.gpu || bar.network) {
             self.bar = BarItems::default();
         }
         if let Some(drives) = &mut self.drives {

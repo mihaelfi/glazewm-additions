@@ -1,13 +1,10 @@
 import { useHistoryCanvas } from './history-graph';
-import type { DriveHistorySample } from './metrics-feed';
-
-const directions = ['read', 'write'] as const;
-
-export function DriveHistoryGraph(props: {
-  letter: string;
-  samples: readonly DriveHistorySample[];
+export function ThroughputGraph<Sample extends { sequence: number }>(props: {
+  class: string;
+  samples: readonly Sample[];
   length: number;
   ceiling: number;
+  series: readonly { color: string; value: (sample: Sample) => number | null | undefined }[];
 }) {
   const canvas = useHistoryCanvas((context, width, height) => {
     const left = 1;
@@ -25,7 +22,7 @@ export function DriveHistoryGraph(props: {
       grid.lineTo(x, bottom);
     }
     const style = getComputedStyle(context.canvas);
-    context.strokeStyle = style.getPropertyValue('--drive-grid').trim();
+    context.strokeStyle = style.getPropertyValue('--throughput-grid').trim();
     context.lineWidth = 1;
     context.stroke(grid);
 
@@ -35,12 +32,12 @@ export function DriveHistoryGraph(props: {
     context.lineWidth = 1.3;
     context.lineJoin = 'round';
     context.lineCap = 'round';
-    for (const direction of directions) {
+    for (const series of props.series) {
       const trace = new Path2D();
       let previous: number | undefined;
       for (const sample of props.samples) {
         const age = latest - sample.sequence;
-        const rate = sample.driveRates?.[props.letter]?.[direction];
+        const rate = series.value(sample);
         if (age > steps || rate == null) {
           previous = undefined;
           continue;
@@ -55,10 +52,10 @@ export function DriveHistoryGraph(props: {
         }
         previous = sample.sequence;
       }
-      context.strokeStyle = style.getPropertyValue(`--drive-${direction}`).trim();
+      context.strokeStyle = style.getPropertyValue(series.color).trim();
       context.stroke(trace);
     }
   });
 
-  return <canvas ref={canvas} class="drive-history-graph" aria-hidden="true" />;
+  return <canvas ref={canvas} class={props.class} aria-hidden="true" />;
 }
