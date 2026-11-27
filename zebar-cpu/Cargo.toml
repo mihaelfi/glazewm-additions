@@ -1,0 +1,26 @@
+[package]
+name = "zebar-cpu-collector"
+version = "1.0.0"
+edition = "2024"
+
+[[bin]]
+name = "zebar-cpu-collector"
+path = "native/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = { version = "0.38", default-features = false, features = ["system"] }
+tiny_http = "0.12"
+windows = { version = "0.62", features = [
+    "Wdk_Graphics_Direct3D",
+    "Wdk_System_SystemInformation",
+    "Win32_Foundation",
+    "Win32_Graphics_Dxgi",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Performance",
+    "Win32_System_Threading",
+] }
+
+[profile.release]
+strip = true

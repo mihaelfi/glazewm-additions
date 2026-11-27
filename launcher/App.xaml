@@ -1,0 +1,18 @@
+<Application x:Class="GlazeLauncher.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+  <Application.Resources>
+    <!-- Same palette as the Zebar bar (src/widget.css): navy #151b30, accent #b6acff. -->
+    <SolidColorBrush x:Key="BgBrush" Color="#151B30"/>
+    <SolidColorBrush x:Key="InputBrush" Color="#1C2341"/>
+    <SolidColorBrush x:Key="HoverBrush" Color="#1E2645"/>
+    <SolidColorBrush x:Key="SelBrush" Color="#2A3258"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#B6ACFF"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#E6E8F2"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#8A90B0"/>
+    <SolidColorBrush x:Key="BadgeBrush" Color="#262D50"/>
+    <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+  </Application.Resources>
+</Application>

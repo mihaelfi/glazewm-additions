@@ -1,0 +1,155 @@
+{
+  "$schema": "https://github.com/glzr-io/zebar/raw/v3.3.1/resources/zpack-schema.json",
+  "name": "cpu-activity",
+  "version": "1.0.0",
+  "description": "GlazeWM status bar with CPU, RAM, GPU and storage activity panels.",
+  "tags": ["topbar"],
+  "widgets": [
+    {
+      "name": "bar",
+      "htmlPath": "./dist/bar.html",
+      "zOrder": "normal",
+      "shownInTaskbar": false,
+      "focused": false,
+      "resizable": false,
+      "transparent": true,
+      "includeFiles": ["dist/**/*"],
+      "privileges": {
+        "shellCommands": [
+          { "program": "zebar-cpu-collector.exe", "argsRegex": "^$" }
+        ]
+      },
+      "presets": [
+        {
+          "name": "default",
+          "anchor": "top_left",
+          "offsetX": "0px",
+          "offsetY": "0px",
+          "width": "100%",
+          "height": "44px",
+          "monitorSelection": { "type": "all" },
+          "dockToEdge": { "enabled": false, "edge": null, "windowMargin": "0px" }
+        }
+      ]
+    },
+    {
+      "name": "cpu-activity",
+      "htmlPath": "./dist/panel.html",
+      "zOrder": "top_most",
+      "shownInTaskbar": false,
+      "focused": true,
+      "resizable": false,
+      "transparent": true,
+      "includeFiles": ["dist/**/*"],
+      "privileges": { "shellCommands": [] },
+      "presets": [
+        {
+          "name": "default",
+          "anchor": "top_right",
+          "offsetX": "-12px",
+          "offsetY": "50px",
+          "width": "576px",
+          "height": "780px",
+          "monitorSelection": { "type": "primary" },
+          "dockToEdge": { "enabled": false, "edge": null, "windowMargin": "0px" }
+        }
+      ]
+    },
+    {
+      "name": "ram-activity",
+      "htmlPath": "./dist/ram.html",
+      "zOrder": "top_most",
+      "shownInTaskbar": false,
+      "focused": true,
+      "resizable": false,
+      "transparent": true,
+      "includeFiles": ["dist/**/*"],
+      "privileges": { "shellCommands": [] },
+      "presets": [
+        {
+          "name": "default",
+          "anchor": "top_right",
+          "offsetX": "-12px",
+          "offsetY": "50px",
+          "width": "576px",
+          "height": "620px",
+          "monitorSelection": { "type": "primary" },
+          "dockToEdge": { "enabled": false, "edge": null, "windowMargin": "0px" }
+        }
+      ]
+    },
+    {
+      "name": "gpu-activity",
+      "htmlPath": "./dist/gpu.html",
+      "zOrder": "top_most",
+      "shownInTaskbar": false,
+      "focused": true,
+      "resizable": false,
+      "transparent": true,
+      "includeFiles": ["dist/**/*"],
+      "privileges": { "shellCommands": [] },
+      "presets": [
+        {
+          "name": "default",
+          "anchor": "top_right",
+          "offsetX": "-12px",
+          "offsetY": "50px",
+          "width": "576px",
+          "height": "700px",
+          "monitorSelection": { "type": "primary" },
+          "dockToEdge": { "enabled": false, "edge": null, "windowMargin": "0px" }
+        }
+      ]
+    },
+    {
+      "name": "storage-activity",
+      "htmlPath": "./dist/storage.html",
+      "zOrder": "top_most",
+      "shownInTaskbar": false,
+      "focused": true,
+      "resizable": false,
+      "transparent": true,
+      "includeFiles": ["dist/**/*"],
+      "privileges": {
+        "shellCommands": [
+          { "program": "C:\\Windows\\explorer.exe", "argsRegex": "^[A-Z]:\\\\$" }
+        ]
+      },
+      "presets": [
+        {
+          "name": "default",
+          "anchor": "top_right",
+          "offsetX": "-12px",
+          "offsetY": "50px",
+          "width": "576px",
+          "height": "470px",
+          "monitorSelection": { "type": "primary" },
+          "dockToEdge": { "enabled": false, "edge": null, "windowMargin": "0px" }
+        }
+      ]
+    },
+    {
+      "name": "settings",
+      "htmlPath": "./dist/settings.html",
+      "zOrder": "top_most",
+      "shownInTaskbar": false,
+      "focused": true,
+      "resizable": false,
+      "transparent": true,
+      "includeFiles": ["dist/**/*"],
+      "privileges": { "shellCommands": [] },
+      "presets": [
+        {
+          "name": "default",
+          "anchor": "top_right",
+          "offsetX": "-12px",
+          "offsetY": "50px",
+          "width": "576px",
+          "height": "660px",
+          "monitorSelection": { "type": "primary" },
+          "dockToEdge": { "enabled": false, "edge": null, "windowMargin": "0px" }
+        }
+      ]
+    }
+  ]
+}

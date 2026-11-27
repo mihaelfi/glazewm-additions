@@ -1,0 +1,64 @@
+/* Glyphs from the Nerd Fonts 3.5.1 webfont. See workspace-icons-LICENSE.txt. */
+@font-face {
+  font-family: "Workspace App Icons";
+  src: url("./workspace-icons.woff2") format("woff2");
+  font-display: swap;
+}
+
+.workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspace-apps {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-inline-start: 5px;
+  border-inline-start: 1px solid rgb(180 190 232 / 28%);
+  pointer-events: none;
+}
+
+.workspace-app-icon {
+  min-width: 12px;
+  font-family: "Workspace App Icons";
+  font-size: 13px;
+  font-weight: normal;
+  line-height: 1;
+  text-align: center;
+}
+
+.workspace-app-initials {
+  min-width: 14px;
+  border-radius: 3px;
+  padding-inline: 2px;
+  background: rgb(180 190 232 / 18%);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+}
+
+.workspace-app-icon.nf-cod-claude::before { content: "\ec82"; }
+.workspace-app-icon.nf-cod-openai::before { content: "\ec81"; }
+.workspace-app-icon.nf-dev-docker::before { content: "\e7b0"; }
+.workspace-app-icon.nf-dev-pycharm::before { content: "\e877"; }
+.workspace-app-icon.nf-dev-vscode::before { content: "\e8da"; }
+.workspace-app-icon.nf-fa-chrome::before { content: "\f268"; }
+.workspace-app-icon.nf-fa-discord::before { content: "\f1ff"; }
+.workspace-app-icon.nf-fa-edge::before { content: "\f282"; }
+.workspace-app-icon.nf-fa-firefox::before { content: "\f269"; }
+.workspace-app-icon.nf-fa-spotify::before { content: "\f1bc"; }
+.workspace-app-icon.nf-fa-steam::before { content: "\f1b6"; }
+.workspace-app-icon.nf-md-console::before { content: "\f018d"; }
+.workspace-app-icon.nf-md-equalizer::before { content: "\f0ea2"; }
+.workspace-app-icon.nf-md-folder_outline::before { content: "\f0256"; }
+.workspace-app-icon.nf-md-message_outline::before { content: "\f0365"; }
+.workspace-app-icon.nf-md-microsoft_excel::before { content: "\f138f"; }
+.workspace-app-icon.nf-md-microsoft_outlook::before { content: "\f0d22"; }
+.workspace-app-icon.nf-md-microsoft_powerpoint::before { content: "\f1390"; }
+.workspace-app-icon.nf-md-microsoft_word::before { content: "\f1392"; }
+.workspace-app-icon.nf-md-note_text_outline::before { content: "\f11d7"; }
+.workspace-app-icon.nf-md-play_circle_outline::before { content: "\f040d"; }
+.workspace-app-icon.nf-md-share_variant::before { content: "\f0497"; }

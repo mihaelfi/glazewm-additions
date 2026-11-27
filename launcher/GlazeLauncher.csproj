@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>GlazeLauncher</AssemblyName>
+    <RootNamespace>GlazeLauncher</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>0.1.0</Version>
+
+    <!-- Startup and steady-state speed: the launcher stays resident, so most
+         cost is the one cold start. R2R precompiles; TieredPGO tunes hot paths. -->
+    <TieredPGO>true</TieredPGO>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Idle-resident app: no background GC thread, smaller heap reservations. -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);SYSLIB1054;CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WPF's implicit usings leave out System.IO (Path clashes with Shapes.Path); we don't use Shapes. -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+</Project>
