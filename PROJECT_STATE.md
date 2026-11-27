@@ -36,6 +36,7 @@ frameworks or chart libraries, and no per-widget polling loops that duplicate th
 Versions: GlazeWM 3.10.1, Zebar 3.3.1 (npm `zebar@3.3.1`), `glazewm@1.7.0` JS client, Solid 1.9, Vite 7, .NET SDK 10.0.115 (desktop runtime 10.0.15).
 
 The `launcher/` and `zebar-cpu/` sources share one Git repository rooted at `C:\codex\glazewm`.
+The private GitHub remote is [`mihaelfi/glazewm-additions`](https://github.com/mihaelfi/glazewm-additions), with `main` as the primary branch.
 The live config is not in this folder or in Git. Before a risky edit, copy the
 file next to itself with a dated suffix, as earlier edits did (see "Backups").
 
@@ -364,7 +365,6 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
 
 ## Open items and known issues
 
-- Create the private GitHub repository and push the initial commit once GitHub authentication is verified as `mihaelfi`.
 - Ideas for more settings: temperature unit, clock format, CPU card style (heatmap or sparkline), and the number of process rows.
 - **Not yet portable:** the installed `zpack.json` uses the absolute collector path `C:\Users\mihae\...`. To share the pack, check whether Zebar accepts a path relative to the pack.
 - **PowerToys Run must stay off** (it was turned off on 2026-11-27). If it is turned back on, it takes Alt+Space again:
@@ -381,7 +381,8 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
 Newest first. One entry per piece of work: date, what changed, files touched, anything left unfinished.
 
 ### 2026-11-27
-- **Started tracking GlazeLauncher and the Zebar widget pack in Git.** Both sources, dependency lockfiles, and project notes are tracked together on `main`. The root `.gitignore` excludes the GlazeWM installer and launcher build outputs. The existing widget `.gitignore` excludes widget build outputs and dependency caches. GitHub publishing is pending authentication as `mihaelfi`.
+- **Published the source repository to GitHub.** Created private `mihaelfi/glazewm-additions` using the verified `mihaelfi` GitHub CLI session and set it as `origin` for `main`. The repository name distinguishes this launcher and widget pack from GlazeWM itself.
+- **Started tracking GlazeLauncher and the Zebar widget pack in Git.** Both sources, dependency lockfiles, and project notes are tracked together on `main`. The root `.gitignore` excludes the GlazeWM installer and launcher build outputs. The existing widget `.gitignore` excludes widget build outputs and dependency caches.
 - **Fixed switching to an open window on a hidden workspace.** GlazeWM 3.10.1's `focus --container-id` changed focus order without redrawing the old and new workspaces. `launcher/Actions.cs` now explicitly switches to a hidden workspace before focusing the selected window. The same path handles windows that the launcher moves and follows. Published and restarted the installed launcher through GlazeWM.
   - Checked Signal from ws 11 through the launcher pipe. Before the fix, GlazeWM focused ws 19 while Windows kept Signal cloaked. After deployment, Signal was visible and foreground on ws 19. Re-selecting it on ws 19 kept it visible and focused. The desktop was returned to its original ws 29 after testing.
 - **Added GlazeLauncher**, a workspace-aware launcher (WPF / .NET 10) in `launcher\`, installed to `.glzr\launcher\`.
