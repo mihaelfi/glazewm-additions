@@ -14,8 +14,7 @@ May 2026 setup, which used YASB instead of Zebar, was archived to
 It is not used now.
 
 Unchanged from the defaults: gaps (inner 20px; outer 60px top and 20px on the other
-sides, which leaves room for the 44px bar), border colours, `hide_method: cloak`,
-and window rules (Zebar windows are ignored by default).
+sides, which leaves room for the 44px bar), border colours, and `hide_method: cloak`.
 
 ### Workspace groups, one per monitor (up to six)
 
@@ -52,7 +51,8 @@ GlazeLauncher runs; the launcher releases them while GlazeWM isn't running.
 starts the launcher and restarts it after a crash or hang (see [`launcher.md`](launcher.md)). The launcher syncs the
 workspaces when it connects (this replaced `workspace.ps1 -Action Initialize`).
 
-Window rules: an extra `ignore` rule for `window_process: GlazeLauncher`, so GlazeWM never tiles the launcher popup.
+The `ignore` rules cover the GlazeLauncher popup and the exact `MassEffect2` process. The game rule
+lets Mass Effect 2 manage its own fullscreen window when launched through Legendary Edition.
 
 ### `scripts/workspace.ps1` (no longer used)
 
@@ -62,10 +62,14 @@ GlazeWM's focused monitor (wrong after clicking an empty desktop), and started P
 
 ## Known issues
 
-- None specific to the config. The workspace keys depend on GlazeLauncher running (see its doc).
+- Mass Effect 2 was reported to start without a visible game when launched through Legendary Edition
+  with GlazeWM running. The process-specific ignore rule is loaded and GlazeWM released the running
+  game window. A fresh launch and the game's display still need verification.
+- The workspace keys depend on GlazeLauncher running (see its doc).
 
 ## Backups
 
+- `.glzr\glazewm\config.yaml.before-mass-effect-2-20261127-213510`: before adding the game ignore rule.
 - `.glzr\glazewm\config.before-monitor-workspaces-20261127-105357.yaml`: default config before the workspace groups
 - `.glzr\glazewm\backup-before-nine-workspaces-20261127-110114\`: config + script from the 10–19 / 20–29 version
 - `.glzr\glazewm\config.before-launcher-20261127-140419.yaml`: config before the launcher (alt+space was `wm-cycle-focus`)
@@ -77,6 +81,9 @@ GlazeWM's focused monitor (wrong after clicking an empty desktop), and started P
 Newest first.
 
 ### 2026-11-27
+- **Ignored the Mass Effect 2 game window** in the live `config.yaml`. GlazeWM had classified the running
+  window as fullscreen, and Windows reported it as visible and uncloaked. The reload succeeded and
+  GlazeWM's window list no longer includes the existing game. Verification through a fresh Legendary Edition launch is pending.
 - **Startup now runs GlazeSupervisor instead of GlazeLauncher** (backup `config.before-supervisor-20261127-192822.yaml`).
   The reload succeeded.
 - **Handed the workspace keys to GlazeLauncher and declared six workspace groups.** Removed the 18 `workspace.ps1` Alt+N /

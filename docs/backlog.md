@@ -114,6 +114,9 @@ with providers and actions around it.
 
 ## GlazeWM
 
+- **Mass Effect 2 window missing after launch** · `verify` · 2026-11-27. Happens through the Legendary
+  Edition launcher when GlazeWM is running. The live config now ignores `MassEffect2`; GlazeWM accepted
+  the reload and released the running game window. Confirm that a fresh launch displays the game.
 - **Alt+N uses the wrong monitor after clicking an empty one** · `done` 2026-11-27. GlazeWM's focus follows windows, so
   clicking an empty desktop didn't change its focused monitor. The launcher now picks the monitor from the foreground window,
   or the cursor when the desktop is in front; the launcher's `@N` uses the same rule. Checked by the user with the real keys.
