@@ -22,11 +22,11 @@ with providers and actions around it.
   Ctrl+1…9 behaviours become ordinary actions with shortcuts. Most items below depend on this.
 - **Launcher supervisor: come back after a crash** · `idea` · M. Needed once the launcher also owns the workspace keys.
   Layers, cheapest first:
-  1. In the launcher: catch unhandled exceptions (`AppDomain`, `Dispatcher`, unobserved tasks), log them, and keep running
-     where it's safe. Most .NET "crashes" are these.
-  2. `RegisterApplicationRestart`: Windows restarts the app after a crash or hang, for free. Only after the app has run 60 s,
-     and not immediately, so it's a backstop only.
-  3. A tiny native supervisor (Rust, like the collector, about 1–2 MB). GlazeWM starts it instead of the launcher. It owns the
+  1. `done` 2026-11-27. In the launcher: log UI-thread errors and keep running; on a background crash or a burst of UI
+     errors, start a replacement before exiting (not within the first 60 s). Covers managed .NET crashes.
+  2. `done` 2026-11-27. `RegisterApplicationRestart` for native crashes and hangs. **No effect on this PC**, because Windows
+     Error Reporting is disabled here; it only helps where it's on.
+  3. `idea` · M. Still needed for native crashes, hangs and kills on this PC. A tiny native supervisor (Rust, like the collector, about 1–2 MB). GlazeWM starts it instead of the launcher. It owns the
      global hotkeys (Alt+Space, Alt+1…9) and forwards each press over the existing pipe. It starts the launcher itself (detached,
      no inherited handles) and waits on its process handle, so it uses no CPU and restarts the launcher the moment it exits.
      On a key press it expects a reply within about 300 ms. If the launcher is gone or hung, it kills or starts it and replays

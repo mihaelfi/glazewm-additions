@@ -31,8 +31,10 @@ public partial class App : Application
     {
         base.OnStartup(e);
         var command = ParseCommand(e.Args);
+        // A replacement for a crashed instance: wait for the old one to go instead of talking to it.
+        bool restart = e.Args.Contains("--restart");
 
-        if (Mutex.TryOpenExisting(MutexName, out var existing))
+        if (!restart && Mutex.TryOpenExisting(MutexName, out var existing))
         {
             existing.Dispose();
             SendToRunningInstance(command ?? "toggle");
@@ -52,21 +54,39 @@ public partial class App : Application
             return;
         }
 
-        _mutex = new Mutex(true, MutexName, out bool owner);
-        if (!owner)
+        bool owner;
+        if (restart)
         {
-            SendToRunningInstance(command ?? "toggle");
-            Shutdown();
-            return;
+            // The crashed process still holds the mutex for a moment; it is abandoned when the process ends.
+            // If another instance keeps holding it (it was already restarted), leave quietly.
+            _mutex = new Mutex(false, MutexName);
+            try { owner = _mutex.WaitOne(TimeSpan.FromSeconds(10)); }
+            catch (AbandonedMutexException) { owner = true; }
+            if (!owner)
+            {
+                Log.Info($"restart (pid {Environment.ProcessId}): another instance is running, exiting");
+                Shutdown();
+                return;
+            }
+        }
+        else
+        {
+            _mutex = new Mutex(true, MutexName, out owner);
+            if (!owner)
+            {
+                SendToRunningInstance(command ?? "toggle");
+                Shutdown();
+                return;
+            }
         }
 
         Log.Init();
-        Log.Info($"starting (pid {Environment.ProcessId})");
+        Log.Info($"starting (pid {Environment.ProcessId}{(restart ? ", after a crash" : "")})");
 
         // A small list window doesn't need the GPU. Software rendering keeps the GPU driver
         // (tens of MB on NVIDIA) out of the process; drawing stays well under a frame.
         System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
-        DispatcherUnhandledException += (_, args) => { Log.Error("unhandled", args.Exception); args.Handled = true; };
+        InstallCrashHandling();
 
         var sta = new StaWorker("shell");
         var icons = new IconCache(sta);
@@ -104,6 +124,79 @@ public partial class App : Application
         _ = Task.Run(() => PipeServer(_cts.Token));
 
         if (command is "show" or "toggle") _window.ShowLauncher();
+    }
+
+    /// <summary>
+    /// Keeps the launcher up. Errors on the UI thread are logged and skipped. If they repeat quickly,
+    /// the UI is probably stuck in a failing state, so the launcher replaces itself with a fresh copy.
+    /// An error on another thread ends the process; the launcher starts a fresh copy first.
+    /// Both only happen if this instance ran for at least a minute, so a launcher that fails at
+    /// startup doesn't restart in a loop. A normal Quit is not a crash and is not restarted.
+    /// Windows' own restart is registered as well, for crashes in native code, but it only works where
+    /// Windows Error Reporting is on (it is off on the development PC).
+    /// </summary>
+    private void InstallCrashHandling()
+    {
+        var recentUiErrors = new Queue<DateTime>();
+        DispatcherUnhandledException += (_, args) =>
+        {
+            Log.Error("unhandled (UI thread)", args.Exception);
+            args.Handled = true;
+            var now = DateTime.UtcNow;
+            recentUiErrors.Enqueue(now);
+            while (recentUiErrors.Count > 0 && now - recentUiErrors.Peek() > UiErrorWindow) recentUiErrors.Dequeue();
+            if (recentUiErrors.Count < UiErrorLimit) return;
+
+            Log.Error($"{UiErrorLimit} UI errors within {UiErrorWindow.TotalSeconds:0} s, replacing this instance");
+            _usage?.Save();
+            StartReplacement();
+            Environment.Exit(1);
+        };
+
+        // Exceptions on other threads end the process; record why and start a replacement before it goes.
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            Log.Error($"unhandled (background, terminating={args.IsTerminating})", args.ExceptionObject as Exception);
+            if (args.IsTerminating) StartReplacement();
+        };
+
+        // A fire-and-forget task that failed; it doesn't end the process, but shouldn't go unnoticed.
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            Log.Error("unobserved task exception", args.Exception);
+            args.SetObserved();
+        };
+
+        // "--detached": the restarted copy is started by Windows, not GlazeWM, so it has no handles to drop.
+        // No restart after a reboot or an update: GlazeWM starts the launcher at login.
+        // "--restart": if our own replacement got there first, this copy exits quietly instead of toggling it.
+        int hr = Native.RegisterApplicationRestart("--detached --restart", Native.RESTART_NO_REBOOT | Native.RESTART_NO_PATCH);
+        if (hr != 0) Log.Info($"RegisterApplicationRestart failed: 0x{hr:X8}");
+    }
+
+    private const int UiErrorLimit = 5;
+    private static readonly TimeSpan UiErrorWindow = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan MinUptimeForRestart = TimeSpan.FromSeconds(60);
+    /// <summary>Starts a fresh copy that takes over once this process has ended.
+    /// ShellExecute, so the copy inherits none of our handles.</summary>
+    private static void StartReplacement()
+    {
+        TimeSpan uptime;
+        using (var self = System.Diagnostics.Process.GetCurrentProcess()) uptime = DateTime.Now - self.StartTime;
+        if (uptime < MinUptimeForRestart)
+        {
+            Log.Error($"not restarting: the launcher failed {uptime.TotalSeconds:0} s after starting");
+            return;
+        }
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!, "--detached --restart")
+            {
+                UseShellExecute = true,
+            })?.Dispose();
+            Log.Info("started a replacement instance");
+        }
+        catch (Exception e) { Log.Error("could not start a replacement instance", e); }
     }
 
     /// <summary>Registers Alt+Space; if another program holds it (PowerToys Run), retries every
@@ -157,6 +250,14 @@ public partial class App : Application
             case "snapshot": _window?.SaveSnapshot(Paths.File("snapshot.png")); break;
             case var q when q.StartsWith("query:", StringComparison.Ordinal): _window?.SetQuery(q[6..]); break;
             case "enter" or "enter:ctrl" or "enter:shift": _window?.DebugEnter(command.EndsWith("ctrl"), command.EndsWith("shift")); break;
+            // Crash-handling tests (pipe only): an error on the UI thread, which is logged and skipped,
+            // and one on a background thread, which ends the process like a real crash.
+            case "debug:throw":
+                Dispatcher.BeginInvoke(new Action(() => throw new InvalidOperationException("debug:throw test")));
+                break;
+            case "debug:crash":
+                new Thread(() => throw new InvalidOperationException("debug:crash test")) { IsBackground = true }.Start();
+                break;
         }
     }
 

@@ -35,7 +35,7 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
 
 | File | Role |
 |---|---|
-| `App.xaml.cs` | Single instance (mutex `Local\GlazeLauncher.Instance`), Alt+Space `RegisterHotKey` (retried every 5 s while another program holds it), named-pipe server `GlazeLauncher`, and the detached relaunch |
+| `App.xaml.cs` | Single instance (mutex `Local\GlazeLauncher.Instance`), Alt+Space `RegisterHotKey` (retried every 5 s while another program holds it), named-pipe server `GlazeLauncher`, the detached relaunch, and crash recovery |
 | `GlazeClient.cs` | WebSocket client for GlazeWM IPC `ws://127.0.0.1:6123`: `sub --events …`, `query monitors`, `command [--id X] …`. On any event it re-queries the tree (80 ms debounce) and forwards `window_managed`. `WmWindow` keeps id, handle, title, process, workspace and focus, not the window state; `WindowStateAsync` queries one window's state on demand |
 | `ShellIndex.cs` | Refreshes the app catalog and known folders on the background STA thread. Checks Store package status while indexing apps and re-indexes on open if the index is older than 2 min. |
 | `KnownFolder.cs` | Resolves the standard per-user folder IDs with `SHGetKnownFolderPath` and publishes the folders Windows can resolve |
@@ -53,9 +53,22 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
 - **Adding a provider.** Register it in `App.xaml.cs`. Search reads a cached snapshot and returns `ProviderResult` entries with a stable ID, match, optional hosting `WmWindow`, display fields, and an async activation callback. The engine ranks results centrally and the UI renders the supplied icon, text and key hints. Providers with `IRefreshableSearchProvider` update their cache asynchronously when the launcher opens. The browser provider uses the hosting window for workspace ranking and `Actions.FocusWindow` before selecting the tab. The tab cache holds titles and runtime IDs in memory, and frecency stores one key per browser.
 - **Launching** uses ShellExecute on `shell:AppsFolder\<id>`, which works for Win32 and Store apps alike.
 - **Detached relaunch:** started without `--detached`, the exe relaunches itself through ShellExecute (no handle inheritance) and exits. That's the same protection the Zebar collector has against keeping a parent's sockets alive.
+- **Crash recovery** (`InstallCrashHandling` in `App.xaml.cs`):
+  - An error on the UI thread is logged and skipped. Five within 10 s means the UI is stuck failing, so the launcher starts a
+    replacement and exits.
+  - An error on a background thread ends the process (.NET can't stop that); the handler logs it and starts a replacement first.
+  - The replacement runs with `--detached --restart`: it waits up to 10 s for the old instance's mutex instead of sending it
+    "toggle", and exits quietly if another instance keeps it.
+  - No replacement if the launcher failed within 60 s of starting, so a broken build can't restart in a loop.
+  - `RegisterApplicationRestart("--detached --restart")` asks Windows to restart it after native crashes and hangs as well.
+    **Windows Error Reporting is disabled on this PC** (`HKLM\…\Windows Error Reporting\Disabled = 1`), so that layer does
+    nothing here; it helps on PCs where it's on. The `--restart` rule keeps the two from ending up with two copies.
+  - Not covered yet: native crashes and hangs on this PC, and being killed. That's the planned supervisor's job (backlog).
 - **Command line:** `GlazeLauncher.exe --toggle|--show|--hide|--reindex|--quit` forwards the command to the running instance over the pipe. With no argument a second start toggles.
 - **Debug pipe commands** (send them with a `NamedPipeClientStream` to `GlazeLauncher`, not available as exe flags): `query:<text>` types a query,
   `enter`, `enter:ctrl` or `enter:shift` activates the selection, and `snapshot` renders the window to `%LOCALAPPDATA%\GlazeLauncher\snapshot.png`.
+  For crash-recovery tests: `debug:throw` raises an error on the UI thread, and `debug:crash` crashes a background thread
+  (the launcher really ends; a replacement starts only after the first 60 s).
 - **Rendering is software-only** (`RenderMode.SoftwareOnly`), and concurrent GC is off. GPU rendering loaded the NVIDIA driver into the process: about 113 → 77 MB private memory after a search. Working set is about 170 MB, mostly shared WPF DLL pages.
 - **Without GlazeWM** the launcher still starts and searches apps (noticed 2026-11-27, not designed for). What works and what should happen in that mode is in the backlog.
 
@@ -103,12 +116,22 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-folder-icons-20261127-161907\`: before the Windows folder icon update
 - `.glzr\launcher\before-browser-tabs-20261127-162737\`: before extension-free browser tab search
 - `.glzr\launcher\before-minimized-and-goto-20261127-181846\`: before minimized-window restore and the go-to-workspace result
+- `.glzr\launcher\before-crash-recovery-20261127-182352\`: before crash recovery
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-27
+- **Added crash recovery.** `App.xaml.cs` logs UI-thread errors and keeps running, replaces itself after five within 10 s,
+  logs background-thread crashes and starts a replacement (`--detached --restart`) before the process ends, and registers
+  with Windows' application restart. `Native.cs` adds `RegisterApplicationRestart`. Debug pipe commands `debug:throw` and
+  `debug:crash` exist for testing. Published and installed.
+  - Checked on the installed launcher: one UI error left it running; a background crash after 67 s was replaced within about
+    a second; a burst of five UI errors after 66 s was replaced; a crash 5 s into a replacement was not restarted (loop guard).
+  - Found that Windows Error Reporting is disabled on this PC, so Windows' own restart never fires here. The first version
+    relied on it and left the launcher down after a crash; the self-replacement was added because of that.
+  - Fixed during testing: the uptime check first measured from the error instead of from process start.
 - **Restore minimized windows, and go to a workspace with a bare `@N`.** `Actions.cs` restores a minimized window after switching
   to its workspace and waits for GlazeWM to see the restore before `focus --container-id` (`Native.cs` adds `IsIconic` and
   `ShowWindow`; `GlazeClient.cs` adds `WindowStateAsync`). New `WorkspaceSearchProvider` in `SearchProviders.cs`, registered in

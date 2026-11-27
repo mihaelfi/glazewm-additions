@@ -16,6 +16,14 @@ internal static class Native
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
+    // ---- crash recovery ------------------------------------------------------
+    /// <summary>Asks Windows Error Reporting to restart this process after a crash or hang.
+    /// Windows only does this once the process has run for at least 60 s.</summary>
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    public static extern int RegisterApplicationRestart(string? commandLine, int flags);
+
+    public const int RESTART_NO_PATCH = 4, RESTART_NO_REBOOT = 8;
+
     // ---- foreground / placement ---------------------------------------------
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
