@@ -60,11 +60,14 @@ public partial class MainWindow : Window
         if (IsVisible) { Native.ForceForeground(_hwnd); return; }
 
         _previousForeground = Native.GetForegroundWindow();
-        _wm = _glaze.Snapshot;
+        // The monitor the user is on (foreground window, or cursor over an empty desktop): the launcher opens
+        // there, and a one-digit "@N" means that monitor's workspace group, the same rule as Alt+N.
+        var snapshot = _glaze.Snapshot;
+        _wm = snapshot.WithTarget(WorkspaceGroups.TargetMonitor(snapshot, _previousForeground));
         QueryBox.Text = "";
         Refresh(keepSelection: false);
 
-        PlaceOn(_wm.FocusedMonitor);
+        PlaceOn(_wm.TargetMonitor ?? _wm.FocusedMonitor);
         PlayOpenTransition();
         Show();
         Activate();
@@ -104,7 +107,7 @@ public partial class MainWindow : Window
             {
                 var wm = await _glaze.RefreshAsync();
                 if (!IsVisible || openVersion != _openVersion) return;
-                _wm = wm;
+                _wm = wm.WithTarget(_wm.TargetMonitor);
                 Refresh(keepSelection: true);
             }
             catch (Exception e) { Log.Info($"snapshot refresh: {e.Message}"); }
@@ -134,7 +137,7 @@ public partial class MainWindow : Window
         finally { _hiding = false; }
     }
 
-    /// <summary>Centres the window horizontally on the monitor GlazeWM has focused, a fifth of the way down.</summary>
+    /// <summary>Centres the window horizontally on the given monitor, a fifth of the way down.</summary>
     private void PlaceOn(WmMonitor? monitor)
     {
         if (monitor is null) return;

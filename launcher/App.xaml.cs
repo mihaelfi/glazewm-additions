@@ -20,8 +20,16 @@ public partial class App : Application
     private const uint HotkeyModifiers = Native.MOD_ALT | Native.MOD_NOREPEAT;
     private const uint HotkeyVk = 0x20; // VK_SPACE
 
+    // Workspace keys, owned here instead of in GlazeWM's config: no process start per key press, and the
+    // target monitor follows the foreground window or the cursor (see WorkspaceGroups.TargetMonitor).
+    private const int FocusSlotHotkeyBase = 0x5100; // + slot: Alt+1…9
+    private const int MoveSlotHotkeyBase = 0x5110;  // + slot: Alt+Shift+1…9
+    private const int SyncHotkeyId = 0x5120;        // Ctrl+Alt+R
+    private bool _workspaceHotkeys;
+
     private Mutex? _mutex;
     private MainWindow? _window;
+    private WorkspaceManager? _workspaces;
     private GlazeClient? _glaze;
     private UsageStore? _usage;
     private ShellIndex? _shellIndex;
@@ -107,10 +115,14 @@ public partial class App : Application
             ],
             _usage);
 
+        _workspaces = new WorkspaceManager(_glaze);
+
         _window = new MainWindow(_glaze, shellIndex, search, actions, icons);
         var hwnd = _window.Prepare();
         HwndSource.FromHwnd(hwnd)!.AddHook(WndProc);
         RegisterHotkeyWithRetry(hwnd);
+        // The workspace keys only mean something while GlazeWM runs; otherwise leave Alt+digits to other apps.
+        _glaze.ConnectionChanged += connected => Dispatcher.BeginInvoke(() => SetWorkspaceHotkeys(hwnd, connected));
 
         actions.InternalCommand += cmd => Dispatcher.BeginInvoke(() => Execute(cmd));
 
@@ -216,23 +228,52 @@ public partial class App : Application
         timer.Start();
     }
 
+    private void SetWorkspaceHotkeys(IntPtr hwnd, bool on)
+    {
+        if (on == _workspaceHotkeys) return;
+        _workspaceHotkeys = on;
+        var failed = new List<string>();
+        for (int slot = 1; slot <= 9; slot++)
+        {
+            uint vk = (uint)('0' + slot);
+            if (on)
+            {
+                if (!Native.RegisterHotKey(hwnd, FocusSlotHotkeyBase + slot, Native.MOD_ALT | Native.MOD_NOREPEAT, vk)) failed.Add($"Alt+{slot}");
+                if (!Native.RegisterHotKey(hwnd, MoveSlotHotkeyBase + slot, Native.MOD_ALT | Native.MOD_SHIFT | Native.MOD_NOREPEAT, vk)) failed.Add($"Alt+Shift+{slot}");
+            }
+            else
+            {
+                Native.UnregisterHotKey(hwnd, FocusSlotHotkeyBase + slot);
+                Native.UnregisterHotKey(hwnd, MoveSlotHotkeyBase + slot);
+            }
+        }
+        if (on && !Native.RegisterHotKey(hwnd, SyncHotkeyId, Native.MOD_CONTROL | Native.MOD_ALT | Native.MOD_NOREPEAT, 0x52)) failed.Add("Ctrl+Alt+R");
+        if (!on) Native.UnregisterHotKey(hwnd, SyncHotkeyId);
+
+        if (failed.Count > 0) Log.Error($"workspace hotkeys held by another program: {string.Join(", ", failed)}");
+        else Log.Info(on ? "workspace hotkeys registered" : "workspace hotkeys released (GlazeWM disconnected)");
+    }
+
     private static string? ParseCommand(string[] args)
     {
         foreach (var a in args)
         {
             var s = a.TrimStart('-', '/').ToLowerInvariant();
-            if (s is "toggle" or "show" or "hide" or "quit" or "reindex") return s;
+            if (s is "toggle" or "show" or "hide" or "quit" or "reindex" or "sync") return s;
         }
         return null;
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == Native.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
-        {
-            _window?.Toggle();
-            handled = true;
-        }
+        if (msg != Native.WM_HOTKEY) return IntPtr.Zero;
+        int id = wParam.ToInt32();
+        if (id == HotkeyId) _window?.Toggle();
+        else if (id is > FocusSlotHotkeyBase and <= FocusSlotHotkeyBase + 9) _ = _workspaces?.FocusSlot(id - FocusSlotHotkeyBase);
+        else if (id is > MoveSlotHotkeyBase and <= MoveSlotHotkeyBase + 9) _ = _workspaces?.MoveToSlot(id - MoveSlotHotkeyBase);
+        else if (id == SyncHotkeyId) _ = _workspaces?.SyncNow();
+        else return IntPtr.Zero;
+        handled = true;
         return IntPtr.Zero;
     }
 
@@ -245,6 +286,12 @@ public partial class App : Application
             case "show": _window?.ShowLauncher(); break;
             case "hide": _window?.HideLauncher(restoreFocus: true); break;
             case "reindex": _ = ReindexAsync(); break;
+            case "sync": _ = _workspaces?.SyncNow(); break;
+            // Debug helpers (pipe only): the Alt+N and Alt+Shift+N actions, without the keyboard.
+            case var f when f.StartsWith("ws:focus:", StringComparison.Ordinal) && int.TryParse(f[9..], out int fs) && fs is >= 1 and <= 9:
+                _ = _workspaces?.FocusSlot(fs); break;
+            case var m when m.StartsWith("ws:move:", StringComparison.Ordinal) && int.TryParse(m[8..], out int ms) && ms is >= 1 and <= 9:
+                _ = _workspaces?.MoveToSlot(ms); break;
             case "quit": Quit(); break;
             // Debug helpers (pipe only): type a query / render the window to snapshot.png.
             case "snapshot": _window?.SaveSnapshot(Paths.File("snapshot.png")); break;

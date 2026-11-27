@@ -47,7 +47,7 @@ Each area doc has its current state, known issues, backups and its own change lo
 | What | Path | Notes |
 |---|---|---|
 | GlazeWM config (live) | `%USERPROFILE%\.glzr\glazewm\config.yaml` | Edited in place; GlazeWM reads it from here |
-| Workspace helper script | `%USERPROFILE%\.glzr\glazewm\scripts\workspace.ps1` | Called by keybindings and at startup |
+| Workspace helper script | `%USERPROFILE%\.glzr\glazewm\scripts\workspace.ps1` | No longer used (the launcher's workspace manager replaced it) |
 | Zebar settings | `%USERPROFILE%\.glzr\zebar\settings.json` | Picks which widget pack starts |
 | Installed widget pack | `%USERPROFILE%\.glzr\zebar\cpu-activity\` | Built output + collector exe; Zebar loads from here |
 | Widget settings | `%USERPROFILE%\.glzr\zebar\cpu-activity\settings.json` | Written by the collector when Settings changes; missing = defaults |
@@ -56,12 +56,16 @@ Each area doc has its current state, known issues, backups and its own change lo
 | GlazeWM installer | `C:\codex\glazewm\glazewm-v3.10.1.exe` | Version in use: GlazeWM 3.10.1 (not in Git) |
 | Launcher source | `C:\codex\glazewm\launcher\` | WPF, .NET 10 (`GlazeLauncher.csproj`) |
 | Installed launcher | `%USERPROFILE%\.glzr\launcher\` | Published output; GlazeWM starts it from here |
-| Launcher data | `%LOCALAPPDATA%\GlazeLauncher\` | `launcher.log`, `usage.json` (frecency), `snapshot.png` (debug) |
+| Launcher data | `%LOCALAPPDATA%\GlazeLauncher\` | `launcher.log`, `usage.json` (frecency), `workspace-merges.json`, `snapshot.png` (debug) |
 
 Versions: GlazeWM 3.10.1, Zebar 3.3.1 (npm `zebar@3.3.1`), `glazewm@1.7.0` JS client, Solid 1.9, Vite 7, .NET SDK 10.0.115 (desktop runtime 10.0.15).
 
-Startup order (from GlazeWM's `startup_commands`): Zebar, then `workspace.ps1 -Action Initialize`, then GlazeLauncher.
-Zebar's bar starts the collector itself when its feed fails.
+Startup order (from GlazeWM's `startup_commands`): Zebar, then GlazeLauncher. Zebar's bar starts the collector itself
+when its feed fails.
+
+**Workspaces follow the monitors.** Each monitor owns nine workspaces (primary `11`–`19`, then `21`–`29` … left to right,
+up to six monitors). GlazeLauncher owns Alt+1…9, Alt+Shift+1…9 and Ctrl+Alt+R and keeps GlazeWM's config in step when
+monitors change, so those keys stop working if the launcher is down. Details: `docs/launcher.md` (Workspace manager).
 
 ## Repository
 
@@ -84,6 +88,8 @@ It is public, so keep personal paths and data out of new commits where possible.
 Area changes are logged in each area doc. Only changes that span the project go here. Newest first.
 
 ### 2026-11-27
+- **Moved the workspace keys and monitor handling from GlazeWM's config and `workspace.ps1` into GlazeLauncher.** See the
+  2026-11-27 entries in `docs/launcher.md` and `docs/glazewm.md`.
 - **Split this file into area docs and a backlog.** `PROJECT_STATE.md` now holds only the overview, the rules and
   shared gotchas. Details moved without loss to `docs/glazewm.md`, `docs/zebar.md`, `docs/zebar-collector.md` and
   `docs/launcher.md`, each with its own change log and backups. New `docs/backlog.md` holds feature ideas and bugs with

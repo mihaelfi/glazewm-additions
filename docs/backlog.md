@@ -102,13 +102,10 @@ with providers and actions around it.
 
 ## GlazeWM
 
-- **Alt+N uses the wrong monitor after clicking an empty one** · `bug` · S–M. Click the empty desktop on monitor 1, press Alt+2:
-  expected ws 12, got ws 22 (the previously focused monitor). Likely cause: GlazeWM's focus follows windows, and an empty desktop
-  has none, so GlazeWM's focused monitor doesn't change; `workspace.ps1` asks GlazeWM. Possible fix: when the foreground window
-  isn't one GlazeWM manages (the desktop), use the monitor under the cursor. The launcher's one-digit `@N` uses the same rule and
-  should get the same fix.
-- **Speed of Alt+N** · `idea`. Each Alt+N starts a PowerShell process. Covered by the workspace manager moving into the launcher
-  (Portability → Any number of monitors).
+- **Alt+N uses the wrong monitor after clicking an empty one** · `done` 2026-11-27. GlazeWM's focus follows windows, so
+  clicking an empty desktop didn't change its focused monitor. The launcher now picks the monitor from the foreground window,
+  or the cursor when the desktop is in front; the launcher's `@N` uses the same rule. Checked by the user with the real keys.
+- **Speed of Alt+N** · `done` 2026-11-27. The launcher handles the keys itself; no PowerShell start per key press.
 
 ## Portability: other screens and a new PC
 
@@ -118,7 +115,7 @@ What already adapts (checked in the code, 2026-11-27):
 - Zebar sizes are logical pixels, so they scale with Windows' display scaling. The bar is 44px tall at 100% and 66px at 150%.
 - Popups are clamped to the monitor they open on (`openActivityPanel` in `src/activity-panel.ts` divides by the scale factor).
 - GlazeWM gaps scale with DPI (`scale_with_dpi: true`), so the 60px top gap keeps fitting the bar.
-- `workspace.ps1` finds the primary and secondary monitors at runtime and rewrites the monitor anchors itself.
+- The launcher's workspace manager finds the monitors at runtime and rewrites the monitor anchors itself.
 
 Items:
 - **Install script for a new PC** · `idea` · M. One script that builds and installs the widget pack, collector and launcher,
@@ -132,13 +129,17 @@ Items:
     `shell_state.rs`): no path resolution and no `%VAR%` expansion. A zpack can't express "this pack's folder".
   - The storage popup's `C:\Windows\explorer.exe` could become a bare `explorer.exe` if Zebar's spawn searches the Windows
     folder (test first).
-  - Already portable: the GlazeWM config and `workspace.ps1` use `%USERPROFILE%`, and the launcher has no hard-coded paths.
+  - Already portable: the GlazeWM config uses `%USERPROFILE%`, and the launcher has no hard-coded paths.
 - **Small and narrow screens** · `verify` · M. Not tested below this PC's monitors. Check: whether the bar's right side overflows
   on a narrow laptop screen (many cards plus workspace icons), and what should drop out first; whether popup content scrolls or
   gets cut off when a popup is clamped shorter than its design height (the CPU popup wants 780px); whether the CPU heatmap stays
   readable with many more logical CPUs (it draws one row per CPU in a short card).
-- **Any number of monitors, adjusted automatically** · `idea` · L. Today the workspace groups (`11`–`19`, `21`–`29`) and
-  `workspace.ps1` support one or two monitors, throw with three, and only re-sync when you press Ctrl+Alt+R.
+- **Any number of monitors, adjusted automatically** · `done` 2026-11-27 for one and two monitors. The launcher's workspace
+  manager (described in `docs/launcher.md`) handles up to six monitors and syncs on its own, with the merge and restore rules
+  below, plus re-tiling self-maximized windows and a 30 s settle watch for windows Windows moves late. Checked by the user with
+  "PC screen only", "Second screen only" and Extend. Three or more monitors are untested. The notes below are the design history.
+  Before: the workspace groups (`11`–`19`, `21`–`29`) and `workspace.ps1` supported one or two monitors, threw with three,
+  and only re-synced when you pressed Ctrl+Alt+R.
   Findings (2026-11-27):
   - **Zebar already adapts.** It checks the monitor list every 4 s (name, position, size, scale) and reopens every open widget
     across the current monitors (`listen_changes` in `monitor_state.rs`, `relaunch_all` in `widget_factory.rs`). The bar uses

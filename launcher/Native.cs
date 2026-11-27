@@ -24,6 +24,58 @@ internal static class Native
 
     public const int RESTART_NO_PATCH = 4, RESTART_NO_REBOOT = 8;
 
+    // ---- monitors ------------------------------------------------------------
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor, rcWork;
+        public uint dwFlags;
+    }
+
+    public const uint MONITOR_DEFAULTTONEAREST = 2;
+    public const int SM_CMONITORS = 80;
+
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);
+
+    /// <summary>Hidden by DWM cloaking (how GlazeWM hides windows of workspaces that aren't displayed).</summary>
+    public static bool IsCloaked(IntPtr hwnd) => DwmGetWindowAttribute(hwnd, 14 /* DWMWA_CLOAKED */, out int cloaked, sizeof(int)) == 0 && cloaked != 0;
+
+    [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT point);
+    [DllImport("user32.dll")] public static extern IntPtr MonitorFromPoint(POINT point, uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+    [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
+
+    public static string ClassName(IntPtr hwnd)
+    {
+        var sb = new StringBuilder(256);
+        return GetClassName(hwnd, sb, sb.Capacity) > 0 ? sb.ToString() : "";
+    }
+
+    /// <summary>Top-left corner of the monitor holding the window, or under the cursor when
+    /// <paramref name="hwnd"/> is zero. Physical pixels (the launcher is per-monitor DPI aware), like GlazeWM's.</summary>
+    public static POINT MonitorOrigin(IntPtr hwnd)
+    {
+        IntPtr monitor;
+        if (hwnd == IntPtr.Zero)
+        {
+            GetCursorPos(out var cursor);
+            monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+        }
+        else monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        return GetMonitorInfo(monitor, ref info) ? new POINT { X = info.rcMonitor.Left, Y = info.rcMonitor.Top } : default;
+    }
+
     // ---- foreground / placement ---------------------------------------------
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);

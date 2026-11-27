@@ -17,64 +17,68 @@ Unchanged from the defaults: gaps (inner 20px; outer 60px top and 20px on the ot
 sides, which leaves room for the 44px bar), border colours, `hide_method: cloak`,
 and window rules (Zebar windows are ignored by default).
 
-### Two workspace groups, one per monitor
+### Workspace groups, one per monitor (up to six)
 
-- Workspaces `11`–`19` are bound to the primary monitor and `21`–`29` to the secondary one.
-- The bindings use YAML anchors so the script can swap them:
-  `bind_to_monitor: &primary_monitor 1` and `bind_to_monitor: &secondary_monitor 0`.
+- Each monitor owns nine workspaces: the Windows primary monitor has `11`–`19`, the others follow left to right
+  (then top to bottom) with `21`–`29`, `31`–`39`, … up to `61`–`69`. All 54 are declared in the config, because
+  GlazeWM refuses to focus a workspace that isn't configured.
+- Each group's `bind_to_monitor` uses a YAML anchor (`&group1_monitor` … `&group6_monitor`), and GlazeLauncher's
+  workspace manager rewrites the anchor values to GlazeWM's monitor indexes (sorted left to right) and reloads the
+  config whenever the monitors change. Groups without a monitor point at the primary. Details and the merge rule for a
+  disconnected monitor are in [`launcher.md`](launcher.md#workspace-manager).
+- `update-workspace-config` only works on active workspaces, which is why the anchors live in the file.
 - History: the first version (10:53) used `10`–`19` / `20`–`29` with a `0` key. At
-  11:01 it was cut to nine per monitor, `11`–`19` / `21`–`29`, and the `alt+0` bindings were removed.
+  11:01 it was cut to nine per monitor, `11`–`19` / `21`–`29`, and the `alt+0` bindings were removed. Until 18:55 the
+  anchors were `&primary_monitor` / `&secondary_monitor`, kept in step by `workspace.ps1` on Ctrl+Alt+R only.
 
 ### Keybindings (changed or added)
 
 | Keys | Action |
 |---|---|
-| `alt+1`…`alt+9` | `workspace.ps1 -Action Focus -Digit N`: focus workspace `1N` on the primary monitor, or `2N` if the secondary monitor has focus |
-| `alt+shift+1`…`9` | `workspace.ps1 -Action Move -Digit N`: move the focused window to that workspace, then focus it |
-| `ctrl+alt+1`…`9` | `focus --workspace 2N` directly, to reach the secondary group when undocked |
-| `ctrl+alt+r` | `workspace.ps1 -Action Sync`: re-read the display layout and put workspaces back on the right monitors (shows a message box on error) |
+| `alt+1`…`alt+9` | **Not bound in GlazeWM.** GlazeLauncher registers them: focus workspace N of the group of the monitor you're on |
+| `alt+shift+1`…`9` | **Not bound in GlazeWM.** GlazeLauncher: move the foreground window to workspace N of its monitor's group and follow it |
+| `ctrl+alt+r` | **Not bound in GlazeWM.** GlazeLauncher: re-sync workspaces to monitors (normally automatic) |
 | `alt+s` / `alt+a` | Changed to `focus --next/prev-active-workspace-on-monitor` (cycles only on the current display) |
 | `alt+space` | **Not bound in GlazeWM.** GlazeLauncher registers it itself (a GlazeWM binding would swallow it) |
 | `alt+c` | `wm-cycle-focus` (tiling → floating → fullscreen), moved here from `alt+space` |
 
-The default `focus --workspace N` and `move --workspace N` bindings were replaced by the script calls above.
-All script calls use `shell-exec --hide-window powershell.exe -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File ...`.
+The default `focus --workspace N` and `move --workspace N` bindings were removed. `ctrl+alt+1`…`9` (direct `2N`) were removed
+on 2026-11-27: with the merge rule, `21`–`29` don't exist without a second monitor. The workspace keys only work while
+GlazeLauncher runs; the launcher releases them while GlazeWM isn't running.
 
 ### Startup and window rules
 
-`startup_commands` runs `shell-exec zebar`, then `workspace.ps1 -Action Initialize`, then
-`shell-exec %USERPROFILE%/.glzr/launcher/GlazeLauncher.exe`.
+`startup_commands` runs `shell-exec zebar`, then `shell-exec %USERPROFILE%/.glzr/launcher/GlazeLauncher.exe`.
+The launcher syncs the workspaces when it connects (this replaced `workspace.ps1 -Action Initialize`).
 
 Window rules: an extra `ignore` rule for `window_process: GlazeLauncher`, so GlazeWM never tiles the launcher popup.
 
-### `scripts/workspace.ps1`
+### `scripts/workspace.ps1` (no longer used)
 
-- Actions: `Focus`, `Move`, `Sync`, `Initialize`; `-Digit` takes 1–9.
-- Picks base 10 or 20 by checking whether the focused GlazeWM monitor is the Windows
-  primary screen (`System.Windows.Forms.Screen`). With only one monitor it always uses base 10.
-- `Sync`/`Initialize` with two monitors: rewrites the `primary_monitor`/`secondary_monitor`
-  anchor indexes in `config.yaml` (atomic replace, with rollback if `wm-reload-config`
-  fails), then moves any workspace on the wrong monitor with `move-workspace --direction`,
-  which keeps its windows and layout. The two monitors must share an edge.
-- `Initialize` with one monitor: if GlazeWM started that monitor on workspace `21`, it
-  renames it to `11` and binds it to monitor 1.
-- Requires Windows and GlazeWM to agree on 1 or 2 displays; otherwise it throws ("wait after docking, then Ctrl+Alt+R").
+Still on disk, but nothing calls it since 2026-11-27, and it expects the old `primary_monitor`/`secondary_monitor`
+anchors, so it would fail against the current config. It supported only one or two monitors, picked the group from
+GlazeWM's focused monitor (wrong after clicking an empty desktop), and started PowerShell on every key press.
 
 ## Known issues
 
-- Alt+N after clicking an empty monitor goes to the previously focused monitor's group. Tracked in [`backlog.md`](backlog.md#glazewm).
+- None specific to the config. The workspace keys depend on GlazeLauncher running (see its doc).
 
 ## Backups
 
 - `.glzr\glazewm\config.before-monitor-workspaces-20261127-105357.yaml`: default config before the workspace groups
 - `.glzr\glazewm\backup-before-nine-workspaces-20261127-110114\`: config + script from the 10–19 / 20–29 version
 - `.glzr\glazewm\config.before-launcher-20261127-140419.yaml`: config before the launcher (alt+space was `wm-cycle-focus`)
+- `.glzr\glazewm\config.before-workspace-manager-20261127-185520.yaml`: config before the launcher took over the workspace keys and groups 3–6 were added
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-27
+- **Handed the workspace keys to GlazeLauncher and declared six workspace groups.** Removed the 18 `workspace.ps1` Alt+N /
+  Alt+Shift+N bindings, the nine Ctrl+Alt+N bindings and Ctrl+Alt+R, and the `-Action Initialize` startup command. Renamed the
+  anchors to `&group1_monitor` / `&group2_monitor` and added `31`–`69` with `&group3_monitor` … `&group6_monitor`.
+  Backup `config.before-workspace-manager-20261127-185520.yaml`. The reload succeeded and the launcher's sync accepted the anchors.
 - For GlazeLauncher (backup `config.before-launcher-20261127-140419.yaml`): `wm-cycle-focus` moved from `alt+space` to `alt+c`, an `ignore` rule for `GlazeLauncher`, and a startup command.
 - Changed to nine workspaces per monitor (`11`–`19` / `21`–`29`), dropped the `0` key.
 - Added the monitor-aware workspace groups, `workspace.ps1`, `ctrl+alt+1..9`, `ctrl+alt+r` sync, Initialize at startup, and per-monitor workspace cycling.

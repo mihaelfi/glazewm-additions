@@ -13,7 +13,11 @@ public sealed record WmMonitor(int X, int Y, int Width, int Height, double Scale
 
 public sealed record WmWorkspace(string Id, string Name, string Label, bool IsDisplayed, bool HasFocus, int MonitorIndex);
 
-public sealed record WmWindow(string Id, long Handle, string Title, string ProcessName, string? WorkspaceName, bool HasFocus);
+/// <param name="State">GlazeWM's state type: "tiling", "floating", "fullscreen" or "minimized".</param>
+/// <param name="X">Where GlazeWM placed the window (physical pixels).</param>
+/// <param name="Shown">GlazeWM's display state is "shown" (its workspace is displayed).</param>
+public sealed record WmWindow(string Id, long Handle, string Title, string ProcessName, string? WorkspaceName, bool HasFocus,
+    string State = "tiling", int X = 0, int Y = 0, bool Shown = false);
 
 public sealed class WmSnapshot
 {
@@ -35,16 +39,22 @@ public sealed class WmSnapshot
     public WmMonitor? FocusedMonitor { get; }
     public WmWorkspace? FocusedWorkspace { get; }
 
+    /// <summary>The monitor a one-digit workspace number refers to. Defaults to GlazeWM's focused monitor;
+    /// the launcher sets it to the monitor the user was on (see <see cref="WorkspaceGroups.TargetMonitor"/>).</summary>
+    public WmMonitor? TargetMonitor { get; private init; }
+
+    public WmSnapshot WithTarget(WmMonitor? monitor) =>
+        new(Monitors, Workspaces, Windows) { TargetMonitor = monitor is not null && Monitors.Contains(monitor) ? monitor : null };
+
     /// <summary>
-    /// Maps a typed workspace number to a workspace name, mirroring workspace.ps1:
-    /// one digit means "slot N in the focused monitor's group" (1N on the primary monitor,
-    /// 2N on the secondary); two digits are taken literally.
+    /// Maps a typed workspace number to a workspace name, the same rule as Alt+N:
+    /// one digit means "slot N in the target monitor's group" (1N on the primary monitor, 2N on the
+    /// next one, ...); two digits are taken literally.
     /// </summary>
     public string ResolveWorkspace(string typed)
     {
         if (typed.Length != 1) return typed;
-        bool secondary = Monitors.Count >= 2 && FocusedMonitor is { IsPrimary: false };
-        return (secondary ? "2" : "1") + typed;
+        return WorkspaceGroups.GroupOf(this, TargetMonitor ?? FocusedMonitor) + typed;
     }
 
     public string LabelFor(string? workspaceName) =>
@@ -66,7 +76,7 @@ public sealed class GlazeClient
     [
         "window_managed", "window_unmanaged", "focus_changed", "focused_container_moved",
         "workspace_activated", "workspace_deactivated", "workspace_updated",
-        "monitor_added", "monitor_updated", "monitor_removed",
+        "monitor_added", "monitor_updated", "monitor_removed", "user_config_changed",
     ];
 
     private readonly CancellationTokenSource _cts = new();
@@ -83,13 +93,19 @@ public sealed class GlazeClient
     /// <summary>Raised on a thread-pool thread for every newly managed window.</summary>
     public event Action<WmWindow>? WindowManaged;
 
+    /// <summary>Raised on a thread-pool thread with the type of every subscribed event.</summary>
+    public event Action<string>? EventReceived;
+
+    /// <summary>Raised on a thread-pool thread: true once connected and the first snapshot is in, false when the connection drops.</summary>
+    public event Action<bool>? ConnectionChanged;
+
     public void Start() => _ = Task.Run(RunAsync);
 
     public void Stop() => _cts.Cancel();
 
     private async Task RunAsync()
     {
-        bool loggedDown = false;
+        bool loggedDown = false, connected = false;
         while (!_cts.IsCancellationRequested)
         {
             try
@@ -104,6 +120,8 @@ public sealed class GlazeClient
                 var receive = ReceiveLoop(ws);
                 await SendAsync("sub --events " + string.Join(' ', Events));
                 await RefreshAsync();
+                connected = true;
+                Raise(ConnectionChanged, true);
                 await receive;
             }
             catch (Exception e) when (!_cts.IsCancellationRequested)
@@ -115,6 +133,8 @@ public sealed class GlazeClient
             {
                 _ws = null;
                 FailPending();
+                if (connected) Raise(ConnectionChanged, false);
+                connected = false;
             }
 
             try { await Task.Delay(2000, _cts.Token); } catch (OperationCanceledException) { }
@@ -162,8 +182,14 @@ public sealed class GlazeClient
                 var win = ParseWindow(w, null);
                 try { WindowManaged?.Invoke(win); } catch (Exception e) { Log.Error("window_managed handler", e); }
             }
+            if (eventType is not null) Raise(EventReceived, eventType);
             _refreshTimer.Change(80, Timeout.Infinite);
         }
+    }
+
+    private static void Raise<T>(Action<T>? handler, T value)
+    {
+        try { handler?.Invoke(value); } catch (Exception e) { Log.Error("glaze event handler", e); }
     }
 
     /// <summary>Sends a raw IPC message and awaits GlazeWM's reply.</summary>
@@ -264,5 +290,9 @@ public sealed class GlazeClient
         w.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
         w.TryGetProperty("processName", out var p) ? p.GetString() ?? "" : "",
         workspace,
-        w.TryGetProperty("hasFocus", out var f) && f.GetBoolean());
+        w.TryGetProperty("hasFocus", out var f) && f.GetBoolean(),
+        w.TryGetProperty("state", out var s) && s.TryGetProperty("type", out var st) ? st.GetString() ?? "tiling" : "tiling",
+        w.TryGetProperty("x", out var x) && x.TryGetInt32(out int xv) ? xv : 0,
+        w.TryGetProperty("y", out var y) && y.TryGetInt32(out int yv) ? yv : 0,
+        w.TryGetProperty("displayState", out var d) && d.GetString() == "shown");
 }

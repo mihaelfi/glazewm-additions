@@ -209,8 +209,8 @@ internal sealed class CommandSearchProvider(Actions actions) : ISearchProvider
         new("Redraw windows", "GlazeWM", "", "wm-redraw"),
         new("Reload GlazeWM config", "GlazeWM", "", "wm-reload-config"),
         new("Pause / resume GlazeWM", "GlazeWM", "", "wm-toggle-pause"),
-        new("Sync workspaces to monitors", "workspace.ps1 -Action Sync (Ctrl+Alt+R)", "",
-            "shell-exec --hide-window powershell.exe -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File %USERPROFILE%/.glzr/glazewm/scripts/workspace.ps1 -Action Sync"),
+        new("Sync workspaces to monitors", "Launcher · Ctrl+Alt+R", "",
+            null, "sync"),
         new("Re-index apps", "Launcher", "", null, "reindex"),
         new("Quit launcher", "Launcher", "", null, "quit"),
     ];

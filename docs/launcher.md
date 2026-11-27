@@ -26,17 +26,59 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
 - **Go to a workspace:** a query that is only `@N` shows **Go to workspace N** at the top; Enter switches to it. The same one-digit/two-digit rule as below applies. The usual list stays below it, so ↓ still picks a window or app to send there.
 - **Browser tabs:** Search by tab title. A tab result shows the browser and workspace. Enter switches to that workspace and selects the existing tab. Chrome and Edge use Windows UI Automation without an extension or a change to browser settings.
 - **Folders:** Search for Home, Desktop, Downloads, Documents, Pictures, Music, or Videos and press Enter to open the folder in File Explorer. Results show the Windows icon and the current user's registered path, including redirected locations. Used folders can appear in recents.
-- **Send to a workspace:** add `@N` to the query, or press **Ctrl+1…9** on a result. One digit means slot N on the
-  focused monitor's group (`@3` → `13` on the primary monitor, `23` on the secondary), the same rule as `workspace.ps1`;
-  two digits (`@23`) are taken literally. By default your view follows the window; hold **Shift** to stay where you are
+- **Send to a workspace:** add `@N` to the query, or press **Ctrl+1…9** on a result. One digit means slot N in the group of
+  the monitor you were on when you opened the launcher (`@3` → `13` on the primary monitor, `23` on the next one), the same
+  rule as Alt+N; two digits (`@23`) are taken literally. The launcher also opens on that monitor. By default your view follows the window; hold **Shift** to stay where you are
   (Hyprland's "silent"). The chip at the right of the search box shows the target (`→ ws 13`).
+
+## Workspace manager
+
+`WorkspaceManager.cs` (no dependency on the launcher UI). The launcher owns the workspace keys while GlazeWM is
+connected, and releases them when it isn't, so Alt+digits stay free for other apps without GlazeWM.
+
+- **Groups:** each monitor owns nine workspaces. Group 1 (`11`–`19`) is always the Windows primary monitor; the others follow
+  left to right, then top to bottom (`21`–`29` … `61`–`69`). `WorkspaceGroups.Assign` computes this from GlazeWM's monitors.
+- **The monitor you're on** (`WorkspaceGroups.TargetMonitor`): the monitor holding the foreground window, or the one under
+  the cursor when the desktop or taskbar is in front. GlazeWM's own focused monitor doesn't change when you click an empty
+  desktop, because its focus follows windows; that used to send Alt+N to the wrong screen.
+- **Keys:** Alt+N focuses slot N of that monitor's group. Alt+Shift+N moves the foreground window there and follows it (with
+  the desktop in front it only switches). Ctrl+Alt+R re-syncs. Each is a `RegisterHotKey`, so no process starts per key press.
+- **Sync** runs when the launcher connects, after `monitor_*` events (1.2 s debounce, and only once Windows and GlazeWM report
+  the same number of monitors, retried for up to 10 s), after `user_config_changed`, and on Ctrl+Alt+R or the Sync command:
+  1. Writes each group's GlazeWM monitor index into the `&groupN_monitor` anchors in `config.yaml` (groups without a monitor
+     point at the primary) and reloads the config if anything changed. Atomic replace; the old file is restored if GlazeWM
+     rejects the new one.
+  2. **Merges** workspaces whose group has no monitor into the same slot of group 1 (`22` → `12`). If that slot isn't
+     active, the workspace is renamed (`update-workspace-config --name`), which keeps its layout; otherwise its windows move.
+  3. **Restores** merged windows when their monitor is back: windows still on the workspace they were merged into go back;
+     windows the user moved since stay. A merged workspace that holds only those windows is renamed back.
+     The memory is `%LOCALAPPDATA%\GlazeLauncher\workspace-merges.json` (window ID → origin and target), so it survives a
+     launcher restart, but not a GlazeWM restart (window IDs change).
+  4. Moves active workspaces that sit on another group's monitor to their own with `move-workspace --direction` (whole
+     workspace, layout kept), one neighbouring monitor per step.
+  5. **Re-tiles windows the display change maximized.** Some apps maximize themselves when the screen setup changes (seen
+     with Chrome), and GlazeWM takes a maximize as fullscreen, so the window covers its workspace and new windows tile behind
+     it. Window states are captured at the first `monitor_*` event of a burst (the client's snapshot is still from before
+     it); windows that were tiling then and are fullscreen now get `set-tiling`. If an app maximized itself before GlazeWM
+     reported the monitor change, this misses it (Alt+F twice fixes it by hand).
+  6. **Removes workspaces left empty by a merge.** GlazeWM only deletes an empty workspace when it's switched away from, so
+     the manager visits each one and then returns to the workspace you were on.
+  7. `wm-redraw`, then a **settle watch** for 30 s (checks at 1, 2, 3, 5, 8, 13, 20 and 30 s): after a display change,
+     Windows and some apps (Jellyfin, a Qt app) move windows back to where they were on that monitor setup, sometimes long
+     after GlazeWM has laid them out, and GlazeWM doesn't put them back. Each check compares `GetWindowRect` of tiled
+     windows on displayed workspaces with GlazeWM's position (16 px tolerance for the invisible borders), and looks for
+     uncloaked windows on hidden workspaces; if anything is off it logs it and runs `wm-redraw`. The watch runs after every
+     sync that saw a display change or was forced (connect, config reload, Ctrl+Alt+R); a newer watch replaces an older one.
+- GlazeWM can stop answering IPC for a few seconds during a display change; a sync that times out retries after 2 s.
+- A `monitor_updated` event that doesn't change any monitor's position or size doesn't trigger a sync.
 
 ## How it works
 
 | File | Role |
 |---|---|
 | `App.xaml.cs` | Single instance (mutex `Local\GlazeLauncher.Instance`), Alt+Space `RegisterHotKey` (retried every 5 s while another program holds it), named-pipe server `GlazeLauncher`, the detached relaunch, and crash recovery |
-| `GlazeClient.cs` | WebSocket client for GlazeWM IPC `ws://127.0.0.1:6123`: `sub --events …`, `query monitors`, `command [--id X] …`. On any event it re-queries the tree (80 ms debounce) and forwards `window_managed`. `WmWindow` keeps id, handle, title, process, workspace and focus, not the window state; `WindowStateAsync` queries one window's state on demand |
+| `WorkspaceManager.cs` | Workspace groups, the monitor you're on, Alt+N / Alt+Shift+N, and syncing workspaces to monitors (see Workspace manager) |
+| `GlazeClient.cs` | WebSocket client for GlazeWM IPC `ws://127.0.0.1:6123`: `sub --events …`, `query monitors`, `command [--id X] …`. On any event it re-queries the tree (80 ms debounce), forwards `window_managed`, and raises `EventReceived` and `ConnectionChanged`. `WmSnapshot.TargetMonitor` is the monitor a one-digit `@N` refers to. `WmWindow` keeps id, handle, title, process, workspace and focus, not the window state; `WindowStateAsync` queries one window's state on demand |
 | `ShellIndex.cs` | Refreshes the app catalog and known folders on the background STA thread. Checks Store package status while indexing apps and re-indexes on open if the index is older than 2 min. |
 | `KnownFolder.cs` | Resolves the standard per-user folder IDs with `SHGetKnownFolderPath` and publishes the folders Windows can resolve |
 | `Search.cs` | Query parsing (`@N`), fuzzy match tiers and character positions, merged ranking, shared result model, `WindowIdentity` |
@@ -64,10 +106,11 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
     **Windows Error Reporting is disabled on this PC** (`HKLM\…\Windows Error Reporting\Disabled = 1`), so that layer does
     nothing here; it helps on PCs where it's on. The `--restart` rule keeps the two from ending up with two copies.
   - Not covered yet: native crashes and hangs on this PC, and being killed. That's the planned supervisor's job (backlog).
-- **Command line:** `GlazeLauncher.exe --toggle|--show|--hide|--reindex|--quit` forwards the command to the running instance over the pipe. With no argument a second start toggles.
+- **Command line:** `GlazeLauncher.exe --toggle|--show|--hide|--reindex|--sync|--quit` forwards the command to the running instance over the pipe. With no argument a second start toggles.
 - **Debug pipe commands** (send them with a `NamedPipeClientStream` to `GlazeLauncher`, not available as exe flags): `query:<text>` types a query,
   `enter`, `enter:ctrl` or `enter:shift` activates the selection, and `snapshot` renders the window to `%LOCALAPPDATA%\GlazeLauncher\snapshot.png`.
-  For crash-recovery tests: `debug:throw` raises an error on the UI thread, and `debug:crash` crashes a background thread
+  `ws:focus:N` and `ws:move:N` run the Alt+N and Alt+Shift+N actions (they use the current foreground window, so make
+  sure the right window is in front). For crash-recovery tests: `debug:throw` raises an error on the UI thread, and `debug:crash` crashes a background thread
   (the launcher really ends; a replacement starts only after the first 60 s).
 - **Rendering is software-only** (`RenderMode.SoftwareOnly`), and concurrent GC is off. GPU rendering loaded the NVIDIA driver into the process: about 113 → 77 MB private memory after a search. Working set is about 170 MB, mostly shared WPF DLL pages.
 - **Without GlazeWM** the launcher still starts and searches apps (noticed 2026-11-27, not designed for). What works and what should happen in that mode is in the backlog.
@@ -100,6 +143,13 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
   may need an entry in `PackagedProcessAliases`.
 - Browser tab search depends on the tab controls Chrome and Edge expose through accessibility. Fullscreen and collapsed tab groups have not been checked.
 - Minimized windows are sometimes missing from results (needs a repro). Tracked in the backlog.
+- **The workspace keys need the launcher.** If it's down (a native crash or hang isn't recovered on this PC yet), Alt+N,
+  Alt+Shift+N and Ctrl+Alt+R do nothing until it's started again. The supervisor in the backlog is meant to fix that.
+- Workspace manager, checked by the user on 2026-11-27: the real keys, the snappier Alt+N, "PC screen only", "Second screen
+  only" (the primary going away) and back to Extend, with merge and restore. Not yet checked: three or more monitors, and
+  merges where the target slot already has windows on a real display change (the "moved" path; only seen in the first test).
+- The settle watch can only fix windows GlazeWM manages; an app that moves itself more than 30 s after a display change
+  needs Ctrl+Alt+R.
 
 **Testing tip:** a throwaway WinForms window (`[System.Windows.Forms.Application]::Run($form)` from a background PowerShell)
 is a safe target for window tests. To see a `snapshot`, have GlazeWM copy it out of the real `%LOCALAPPDATA%`
@@ -117,12 +167,36 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-browser-tabs-20261127-162737\`: before extension-free browser tab search
 - `.glzr\launcher\before-minimized-and-goto-20261127-181846\`: before minimized-window restore and the go-to-workspace result
 - `.glzr\launcher\before-crash-recovery-20261127-182352\`: before crash recovery
+- `.glzr\launcher\before-workspace-manager-20261127-185520\`: before the workspace manager
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-27
+- **Added the workspace manager and took over the workspace keys.** New `WorkspaceManager.cs` (groups for up to six
+  monitors, target monitor from the foreground window or cursor, Alt+N, Alt+Shift+N, automatic sync with merge and restore).
+  `App.xaml.cs` registers Alt+1…9, Alt+Shift+1…9 and Ctrl+Alt+R while GlazeWM is connected, and adds `--sync` and the
+  `ws:focus:N` / `ws:move:N` pipe commands. `GlazeClient.cs` raises `EventReceived` and `ConnectionChanged`, subscribes to
+  `user_config_changed`, and `WmSnapshot.ResolveWorkspace` uses the group rule and `TargetMonitor`. `MainWindow.xaml.cs` opens
+  on the monitor you're on. `Native.cs` adds monitor and class-name helpers. The Sync command now runs in the launcher.
+  GlazeWM config changes are in [`glazewm.md`](glazewm.md). Published and installed.
+  - "PC screen only" test by the user: 21 merged into 11 (windows moved) and 22 into 12 (renamed). Two problems found and
+    fixed: Chrome on 19 had maximized itself during the display change, so GlazeWM treated it as fullscreen and Signal tiled
+    behind it (now re-tiled by the sync); and the emptied 21 stayed on the bar (now removed by the sync). Neither fix has been
+    through a real display change yet. `WmWindow` now carries GlazeWM's window state.
+  - Extend after that: 11 → 21 and 12 → 22 were renamed back (restore works). Then "Second screen only": the first sync timed
+    out while GlazeWM was busy; a later one merged 21 → 11 and 22 → 12 by rename. GlazeWM's layout was right, but the windows
+    sat where Windows had moved them (about two thirds of the screen). Added the timeout retry and redraws at 2 s and 5 s.
+  - Back to Extend: Jellyfin (22, left screen in GlazeWM) was physically on the right screen more than a minute later, so
+    something moved it after the redraws. `wm-redraw` put it back. Replaced the fixed redraws with the 30 s settle watch.
+    Checked with a throwaway window pushed out of its tile 1.5 s after a sync: the +2 s check logged it and put it back.
+  - Final round by the user (19:18 one screen, 19:19 back to two): merged by rename both times and renamed back, and the user
+    confirmed the windows landed right. No settle check had to step in on that run.
+  - Checked: the sync at connect and after the config reload found the anchors and changed nothing (the layout was already
+    right). Through the pipe, Alt+8 and Alt+4 went to 28 and 24 with Jellyfin (left screen) in front, which matches
+    Windows' foreground window. Alt+Shift+7 on a throwaway window moved it from 22 to 27 and followed it.
+  - Not yet checked: see Known issues.
 - **Added crash recovery.** `App.xaml.cs` logs UI-thread errors and keeps running, replaces itself after five within 10 s,
   logs background-thread crashes and starts a replacement (`--detached --restart`) before the process ends, and registers
   with Windows' application restart. `Native.cs` adds `RegisterApplicationRestart`. Debug pipe commands `debug:throw` and
