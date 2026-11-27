@@ -37,7 +37,7 @@ frameworks or chart libraries, and no per-widget polling loops that duplicate th
 Versions: GlazeWM 3.10.1, Zebar 3.3.1 (npm `zebar@3.3.1`), `glazewm@1.7.0` JS client, Solid 1.9, Vite 7, .NET SDK 10.0.115 (desktop runtime 10.0.15).
 
 The `launcher/` and `zebar-cpu/` sources share one Git repository rooted at `C:\codex\glazewm`.
-The private GitHub remote is [`mihaelfi/glazewm-additions`](https://github.com/mihaelfi/glazewm-additions), with `main` as the primary branch.
+The public GitHub remote is [`mihaelfi/glazewm-additions`](https://github.com/mihaelfi/glazewm-additions), with `main` as the primary branch.
 The live config is not in this folder or in Git. Before a risky edit, copy the
 file next to itself with a dated suffix, as earlier edits did (see "Backups").
 
@@ -412,6 +412,7 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
 Newest first. One entry per piece of work: date, what changed, files touched, anything left unfinished.
 
 ### 2026-11-27
+- **Made the GitHub repository public.** Published `main` under `mihaelfi/glazewm-additions` with the GitHub noreply email in the commit history.
 - **Added extension-free Chrome and Edge tab search.** `BrowserTabSearchProvider.cs` reads only tab titles and IDs from each GlazeWM-managed browser's Windows UI Automation tab strip. `SearchProviders.cs`, `Search.cs`, `App.xaml.cs`, and `MainWindow.xaml.cs` refresh provider data asynchronously on open. `Actions.cs` logs activation failures by usage key. Published and installed the build. Verified inactive tab selection and foreground focus on a hidden workspace in Chrome and in Edge with both horizontal and vertical tabs. Closed the isolated browser test windows and cleaned up their profiles.
 - **Use Windows icons for launcher folders.** `Native.cs` and `IconCache.cs` request each folder's icon by Known Folder ID on the shared background worker, fall back to the resolved folder path, and deliver cached images to all waiting results. `App.xaml.cs`, `SearchProviders.cs`, `Search.cs`, and `MainWindow.xaml.cs` pass the folder ID, warm the icons, and show the generic outline while the Windows image is unavailable. Published and installed the build. Verified distinct Windows icons for Downloads, Documents, Pictures, Desktop, Music, and Videos, and the standard Windows folder icon for Home.
 - **Added current-user folders to launcher search.** `KnownFolder.cs` resolves seven standard Windows folder IDs for the current account. `ShellIndex.cs` (formerly `AppIndex.cs`) caches them alongside the app catalog. `SearchProviders.cs`, `Search.cs`, `App.xaml.cs`, `Actions.cs`, and `MainWindow.xaml.cs` add the folder provider, shell activation, and result handling. Published and installed the build. Checked the Downloads, Documents, and Pictures results and verified that selecting Downloads opened its registered path in File Explorer.
