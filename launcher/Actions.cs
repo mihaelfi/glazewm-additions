@@ -40,12 +40,7 @@ internal sealed class Actions
 
         try
         {
-            switch (item.Kind)
-            {
-                case ResultKind.App: await ActivateApp(item, opt, wm); break;
-                case ResultKind.Window: await ActivateWindow(item.Window!, opt, currentWs); break;
-                case ResultKind.Command: await RunCommand(item.Command!); break;
-            }
+            await item.Activate(opt, wm);
         }
         catch (Exception e)
         {
@@ -53,15 +48,13 @@ internal sealed class Actions
         }
     }
 
-    private async Task ActivateApp(ResultItem item, ActivateOptions opt, WmSnapshot wm)
+    public async Task ActivateApp(AppEntry app, IReadOnlyList<WmWindow> runningWindows, ActivateOptions opt, WmSnapshot wm)
     {
-        var app = item.App!;
-
         // Already open and no workspace given: focus it instead of starting another copy.
         // Repeated activation cycles through its windows.
-        if (opt.TargetWorkspace is null && !opt.Alternate && item.RunningWindows.Count > 0)
+        if (opt.TargetWorkspace is null && !opt.Alternate && runningWindows.Count > 0)
         {
-            var windows = item.RunningWindows
+            var windows = runningWindows
                 .OrderBy(w => w.WorkspaceName == wm.FocusedWorkspace?.Name ? 0 : 1)
                 .ToList();
             int focused = windows.FindIndex(w => w.HasFocus);
@@ -92,9 +85,9 @@ internal sealed class Actions
         })?.Dispose();
     }
 
-    private async Task ActivateWindow(WmWindow w, ActivateOptions opt, string? currentWs)
+    public async Task ActivateWindow(WmWindow w, ActivateOptions opt, WmSnapshot wm)
     {
-        string? destination = opt.TargetWorkspace ?? (opt.Alternate ? currentWs : null);
+        string? destination = opt.TargetWorkspace ?? (opt.Alternate ? wm.FocusedWorkspace?.Name : null);
         bool moved = false;
         if (destination is not null && destination != w.WorkspaceName)
         {
@@ -104,7 +97,7 @@ internal sealed class Actions
         await FocusWindow(w, moved ? destination : null);
     }
 
-    private async Task FocusWindow(WmWindow w, string? destination = null)
+    public async Task FocusWindow(WmWindow w, string? destination = null)
     {
         if (_glaze.IsConnected)
         {
@@ -122,7 +115,7 @@ internal sealed class Actions
         Native.ForceForeground(new IntPtr(w.Handle));
     }
 
-    private async Task RunCommand(LauncherCommand c)
+    public async Task RunCommand(LauncherCommand c)
     {
         if (c.Internal is not null) { InternalCommand?.Invoke(c.Internal); return; }
         if (c.WmCommand is not null) await TryCommand(c.WmCommand);

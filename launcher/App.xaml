@@ -8,7 +8,10 @@
     <SolidColorBrush x:Key="InputBrush" Color="#1C2341"/>
     <SolidColorBrush x:Key="HoverBrush" Color="#1E2645"/>
     <SolidColorBrush x:Key="SelBrush" Color="#2A3258"/>
+    <SolidColorBrush x:Key="SelectionBorderBrush" Color="#515B89"/>
     <SolidColorBrush x:Key="AccentBrush" Color="#B6ACFF"/>
+    <SolidColorBrush x:Key="MatchBrush" Color="#DDCEFF"/>
+    <SolidColorBrush x:Key="MatchBackgroundBrush" Color="#386C52C7"/>
     <SolidColorBrush x:Key="TextBrush" Color="#E6E8F2"/>
     <SolidColorBrush x:Key="MutedBrush" Color="#8A90B0"/>
     <SolidColorBrush x:Key="BadgeBrush" Color="#262D50"/>

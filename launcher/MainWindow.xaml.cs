@@ -2,6 +2,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
 namespace GlazeLauncher;
@@ -9,27 +11,26 @@ namespace GlazeLauncher;
 public partial class MainWindow : Window
 {
     private const double WidthDip = 720;
+    private static readonly Duration OpenDuration = new(TimeSpan.FromMilliseconds(125));
 
     private readonly GlazeClient _glaze;
     private readonly AppIndex _apps;
     private readonly SearchEngine _search;
     private readonly Actions _actions;
     private readonly IconCache _icons;
-    private readonly WindowIdentity _identity;
 
     private WmSnapshot _wm = WmSnapshot.Empty;
     private IntPtr _hwnd;
     private IntPtr _previousForeground;
     private bool _hiding;
 
-    internal MainWindow(GlazeClient glaze, AppIndex apps, SearchEngine search, Actions actions, IconCache icons, WindowIdentity identity)
+    internal MainWindow(GlazeClient glaze, AppIndex apps, SearchEngine search, Actions actions, IconCache icons)
     {
         _glaze = glaze;
         _apps = apps;
         _search = search;
         _actions = actions;
         _icons = icons;
-        _identity = identity;
         InitializeComponent();
 
         Deactivated += (_, _) => HideLauncher(restoreFocus: false);
@@ -63,6 +64,7 @@ public partial class MainWindow : Window
         Refresh(keepSelection: false);
 
         PlaceOn(_wm.FocusedMonitor);
+        PlayOpenTransition();
         Show();
         Activate();
         Native.ForceForeground(_hwnd);
@@ -74,6 +76,23 @@ public partial class MainWindow : Window
         // refresh once in the background and re-render without moving the selection.
         _ = RefreshSnapshotAsync();
         _ = _apps.RefreshIfStale();
+    }
+
+    private void PlayOpenTransition()
+    {
+        if (!SystemParameters.ClientAreaAnimation) return;
+
+        var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+        OpenOffset.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-6, 0, OpenDuration)
+        {
+            EasingFunction = ease,
+            FillBehavior = FillBehavior.Stop,
+        });
+        LauncherContent.BeginAnimation(OpacityProperty, new DoubleAnimation(0.72, 1, OpenDuration)
+        {
+            EasingFunction = ease,
+            FillBehavior = FillBehavior.Stop,
+        });
     }
 
     private async Task RefreshSnapshotAsync()
@@ -99,6 +118,8 @@ public partial class MainWindow : Window
         try
         {
             Hide();
+            OpenOffset.BeginAnimation(TranslateTransform.YProperty, null);
+            LauncherContent.BeginAnimation(OpacityProperty, null);
             if (restoreFocus && _previousForeground != IntPtr.Zero && Native.IsWindow(_previousForeground))
                 Native.SetForegroundWindow(_previousForeground);
         }
@@ -159,7 +180,7 @@ public partial class MainWindow : Window
     private void Refresh(bool keepSelection)
     {
         var query = CurrentQuery;
-        var previous = keepSelection ? Results.SelectedIndex : 0;
+        var previousId = keepSelection && Results.SelectedIndex > 0 ? (Results.SelectedItem as ResultItem)?.Id : null;
         var items = _search.Search(query, _wm);
         foreach (var item in items) LoadIcon(item);
 
@@ -167,7 +188,7 @@ public partial class MainWindow : Window
         Results.Visibility = items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (items.Count > 0)
         {
-            Results.SelectedIndex = Math.Clamp(previous, 0, items.Count - 1);
+            Results.SelectedIndex = previousId is null ? 0 : Math.Max(0, items.FindIndex(item => item.Id == previousId));
             Results.ScrollIntoView(Results.SelectedItem);
         }
 
@@ -186,13 +207,7 @@ public partial class MainWindow : Window
 
     private void LoadIcon(ResultItem item)
     {
-        string? path = item.Kind switch
-        {
-            ResultKind.App => item.App!.IconPath,
-            ResultKind.Window => _identity.ExePath(item.Window!),
-            _ => null,
-        };
-        if (path is null) return;
+        if (item.IconPath is not { } path) return;
         if (_icons.TryGet(path, out var cached)) { item.Icon = cached; return; }
         _icons.Request(path, img => Dispatcher.BeginInvoke(DispatcherPriority.Background, () => item.Icon = img));
     }
@@ -200,14 +215,7 @@ public partial class MainWindow : Window
     private void UpdateFooter()
     {
         var item = Results.SelectedItem as ResultItem;
-        Footer.Text = item?.Kind switch
-        {
-            ResultKind.App when item.RunningWindows.Count > 0 => "↵ focus open window   Ctrl+↵ new window   Ctrl+1‒9 open on workspace (+Shift: stay)   Esc close",
-            ResultKind.App => "↵ open   Ctrl+1‒9 or @N open on workspace (+Shift: stay)   Esc close",
-            ResultKind.Window => "↵ focus   Ctrl+↵ bring here   Ctrl+1‒9 or @N move to workspace (+Shift: stay)   Esc close",
-            ResultKind.Command => "↵ run   Esc close",
-            _ => "Type to search apps, open windows and commands   Esc close",
-        };
+        Footer.Text = item?.FooterText ?? "Type to search apps, open windows and commands   Esc close";
     }
 
     // ---- input -----------------------------------------------------------------

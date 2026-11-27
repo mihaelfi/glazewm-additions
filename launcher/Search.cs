@@ -5,8 +5,6 @@ using System.Windows.Media;
 
 namespace GlazeLauncher;
 
-public enum ResultKind { App, Window, Command }
-
 /// <summary>A built-in action (GlazeWM command, script, or launcher control).</summary>
 internal sealed record LauncherCommand(string Title, string Subtitle, string Glyph, string? WmCommand, string? Internal = null)
 {
@@ -15,19 +13,30 @@ internal sealed record LauncherCommand(string Title, string Subtitle, string Gly
 
 internal sealed class ResultItem : INotifyPropertyChanged
 {
-    public required ResultKind Kind { get; init; }
+    public required string Id { get; init; }
     public required string Title { get; init; }
     public string Subtitle { get; init; } = "";
     public string Badge { get; init; } = "";
     public string Glyph { get; init; } = "";
     public required string UsageKey { get; init; }
-    public double Score { get; init; }
+    public required Func<ActivateOptions, WmSnapshot, Task> Activate { get; init; }
+    public required string FooterText { get; init; }
+    public string? IconPath { get; init; }
+    public int? SubtitleMatchStart { get; init; }
 
-    public AppEntry? App { get; init; }
-    public WmWindow? Window { get; init; }
-    public LauncherCommand? Command { get; init; }
-    /// <summary>For apps: windows of this app that are open right now.</summary>
-    public IReadOnlyList<WmWindow> RunningWindows { get; init; } = [];
+    private int[]? _titleMatches;
+    private int[]? _subtitleMatches;
+
+    public HighlightedText TitleText => new(Title, _titleMatches);
+    public HighlightedText SubtitleText => new(Subtitle, _subtitleMatches, SubtitleMatchStart ?? 0);
+
+    public void Highlight(string query)
+    {
+        if (SubtitleMatchStart is { } start)
+            _subtitleMatches = Fuzzy.FindPositions(query, Subtitle[start..]);
+        else
+            _titleMatches = Fuzzy.FindPositions(query, Title);
+    }
 
     private ImageSource? _icon;
     public ImageSource? Icon
@@ -57,205 +66,166 @@ internal readonly record struct Query(string Text, string? WorkspaceToken)
     }
 }
 
+internal enum MatchQuality { None, Subsequence, Substring, Initials, WordStart, Strong, Exact }
+
+internal readonly record struct TextMatch(MatchQuality Quality, double Score) : IComparable<TextMatch>
+{
+    public bool Found => Quality != MatchQuality.None;
+
+    public int CompareTo(TextMatch other) => Quality == other.Quality
+        ? Score.CompareTo(other.Score)
+        : Quality.CompareTo(other.Quality);
+}
+
 internal static class Fuzzy
 {
-    /// <summary>Scores <paramref name="text"/> against a lower-case query; negative means no match.
-    /// Prefix &gt; word-start &gt; initials ("vsc" → Visual Studio Code) &gt; substring &gt; subsequence.</summary>
-    public static double Score(string query, string text)
+    /// <summary>Matches text against a nonempty, lower-case query.</summary>
+    public static TextMatch Match(string query, string text, Span<int> positions = default)
     {
-        if (query.Length == 0) return 0;
-        if (text.Length == 0) return -1;
+        if (query.Length == 0 || query.Length > text.Length) return default;
         var t = text.ToLowerInvariant();
 
-        if (t.StartsWith(query, StringComparison.Ordinal)) return 1000 - Math.Min(t.Length - query.Length, 100);
-
         int idx = t.IndexOf(query, StringComparison.Ordinal);
+        if (idx == 0)
+        {
+            RecordRange(positions, idx);
+            return new(query.Length == t.Length ? MatchQuality.Exact : MatchQuality.Strong,
+                1000 - Math.Min(t.Length - query.Length, 100));
+        }
         if (idx > 0)
         {
             bool wordStart = !char.IsLetterOrDigit(t[idx - 1]) || (char.IsUpper(text[idx]) && char.IsLower(text[idx - 1]));
-            int end = idx + query.Length;
-            bool wordEnd = end == t.Length || !char.IsLetterOrDigit(t[end]);
-            if (wordStart && wordEnd) return 950 - Math.Min(idx, 50); // a whole word: "chrome" in "Google Chrome"
-            if (wordStart) return 850 - Math.Min(idx, 50);
+            if (wordStart)
+            {
+                int end = idx + query.Length;
+                bool wordEnd = end == t.Length || !char.IsLetterOrDigit(t[end]);
+                RecordRange(positions, idx);
+                return new(wordEnd ? MatchQuality.Strong : MatchQuality.WordStart,
+                    (wordEnd ? 950 : 850) - Math.Min(idx, 50));
+            }
         }
 
-        if (Initials(text).StartsWith(query, StringComparison.Ordinal)) return 780;
-        if (idx > 0) return 600 - Math.Min(idx, 100);
+        if (MatchesInitials(query, text, positions)) return new(MatchQuality.Initials, 780);
+        if (idx > 0)
+        {
+            RecordRange(positions, idx);
+            return new(MatchQuality.Substring, 600 - Math.Min(idx, 100));
+        }
 
         // Subsequence: every query char in order; reward consecutive runs and word starts.
         double score = 300;
         int ti = 0, run = 0;
-        foreach (var qc in query)
+        for (int i = 0; i < query.Length; i++)
         {
-            int found = t.IndexOf(qc, ti);
-            if (found < 0) return -1;
+            int found = t.IndexOf(query[i], ti);
+            if (found < 0) return default;
+            if (!positions.IsEmpty) positions[i] = found;
             if (found == ti && ti > 0) { run++; score += 8 * run; } else { run = 0; score -= Math.Min(found - ti, 20); }
             if (found == 0 || !char.IsLetterOrDigit(t[found - 1])) score += 15;
             ti = found + 1;
         }
-        return Math.Max(score, 1);
+        return new(MatchQuality.Subsequence, Math.Max(score, 1));
     }
 
-    private static string Initials(string text)
+    public static int[]? FindPositions(string query, string text)
     {
-        Span<char> buf = stackalloc char[Math.Min(text.Length, 64)];
-        int n = 0;
-        bool prevSep = true;
-        for (int i = 0; i < text.Length && n < buf.Length; i++)
+        if (query.Length == 0 || query.Length > text.Length) return null;
+        Span<int> positions = query.Length <= 128 ? stackalloc int[query.Length] : new int[query.Length];
+        return Match(query, text, positions).Found ? positions.ToArray() : null;
+    }
+
+    private static void RecordRange(Span<int> positions, int start)
+    {
+        for (int i = 0; i < positions.Length; i++) positions[i] = start + i;
+    }
+
+    private static bool MatchesInitials(string query, string text, Span<int> positions)
+    {
+        if (query.Length > 64) return false;
+
+        int matched = 0;
+        bool previousSeparator = true;
+        for (int i = 0; i < text.Length; i++)
         {
             char c = text[i];
-            bool sep = !char.IsLetterOrDigit(c);
+            bool separator = !char.IsLetterOrDigit(c);
             bool camel = i > 0 && char.IsUpper(c) && char.IsLower(text[i - 1]);
-            if (!sep && (prevSep || camel)) buf[n++] = char.ToLowerInvariant(c);
-            prevSep = sep;
+            if (!separator && (previousSeparator || camel))
+            {
+                if (char.ToLowerInvariant(c) != query[matched]) return false;
+                if (!positions.IsEmpty) positions[matched] = i;
+                if (++matched == query.Length) return true;
+            }
+            previousSeparator = separator;
         }
-        return new string(buf[..n]);
+        return false;
     }
 }
 
-/// <summary>Builds the ranked result list from apps, open windows and commands.</summary>
-internal sealed class SearchEngine(AppIndex apps, UsageStore usage, WindowIdentity identity)
+/// <summary>Merges provider results with one ranking policy.</summary>
+internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, UsageStore usage)
 {
-    public const int MaxResults = 40;
-
-    public static readonly IReadOnlyList<LauncherCommand> Commands =
-    [
-        new("Toggle tiling direction", "GlazeWM", "", "toggle-tiling-direction"),
-        new("Toggle floating", "GlazeWM · focused window", "", "toggle-floating --centered"),
-        new("Toggle fullscreen", "GlazeWM · focused window", "", "toggle-fullscreen"),
-        new("Redraw windows", "GlazeWM", "", "wm-redraw"),
-        new("Reload GlazeWM config", "GlazeWM", "", "wm-reload-config"),
-        new("Pause / resume GlazeWM", "GlazeWM", "", "wm-toggle-pause"),
-        new("Sync workspaces to monitors", "workspace.ps1 -Action Sync (Ctrl+Alt+R)", "",
-            "shell-exec --hide-window powershell.exe -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File %USERPROFILE%/.glzr/glazewm/scripts/workspace.ps1 -Action Sync"),
-        new("Re-index apps", "Launcher", "", null, "reindex"),
-        new("Quit launcher", "Launcher", "", null, "quit"),
-    ];
+    private const int MaxResults = 40;
+    private const int MaxRecents = 6;
 
     public List<ResultItem> Search(Query query, WmSnapshot wm)
     {
-        var q = query.Text.ToLowerInvariant();
+        query = query with { Text = query.Text.ToLowerInvariant() };
         var currentWs = wm.FocusedWorkspace?.Name;
-        var results = new List<ResultItem>(64);
+        bool home = query.Text.Length == 0;
+        var recents = home
+            ? usage.Top(currentWs, int.MaxValue).ToDictionary(entry => entry.Key, entry => entry.Score)
+            : [];
+        var context = new SearchContext(query, wm, recents);
 
-        // Index running windows by app so app rows can show "open on 12" and focus instead of relaunching.
-        var windowsByApp = new Dictionary<AppEntry, List<WmWindow>>();
-        var claimed = new HashSet<string>();
-        foreach (var w in wm.Windows)
+        var results = new List<(ProviderResult Result, double Score)>(64);
+        foreach (var provider in providers)
         {
-            var ids = identity.For(w);
-            foreach (var app in apps.Apps)
+            foreach (var result in provider.Search(context))
             {
-                if (!app.MatchIds.Overlaps(ids)) continue;
-                if (!windowsByApp.TryGetValue(app, out var list)) windowsByApp[app] = list = [];
-                list.Add(w);
-                claimed.Add(w.Id);
-                break;
+                if (home || result.Match.Found)
+                {
+                    double score = home
+                        ? recents.GetValueOrDefault(result.Item.UsageKey)
+                        : result.Match.Score + provider.Priority + UsageBoost(result.Item.UsageKey, currentWs);
+                    results.Add((result, score));
+                }
             }
         }
 
-        if (q.Length == 0)
+        if (home)
         {
-            AddRecents(results, wm, currentWs, windowsByApp);
-            foreach (var w in OrderedWindows(wm)) results.Add(WindowItem(w, wm, 0));
-            return results.Take(MaxResults).ToList();
+            var recentItems = results.Where(entry => entry.Result.TargetWindow is null && entry.Score > 0)
+                .OrderByDescending(entry => entry.Score)
+                .Take(MaxRecents);
+            var openItems = results.Where(entry => entry.Result.TargetWindow is not null)
+                .OrderByDescending(entry => OpenPriority(entry.Result.TargetWindow, currentWs))
+                .ThenBy(entry => entry.Result.TargetWindow?.WorkspaceName, StringComparer.Ordinal)
+                .ThenBy(entry => entry.Result.Item.Title, StringComparer.OrdinalIgnoreCase);
+            return recentItems.Concat(openItems).Take(MaxResults).Select(entry => entry.Result.Item).ToList();
         }
 
-        foreach (var app in apps.Apps)
-        {
-            double s = Fuzzy.Score(q, app.Name);
-            if (s < 0) continue;
-            // "chrome" should find Google Chrome (exe chrome.exe) before Chrome Remote Desktop.
-            if (app.MatchIds.Contains(q)) s += 60;
-            s += Boost(app.UsageKey, currentWs);
-            results.Add(AppItem(app, wm, s, windowsByApp.GetValueOrDefault(app)));
-        }
-
-        foreach (var w in wm.Windows)
-        {
-            // Windows rank below the app they belong to; a title hit counts more than a process-name hit.
-            double s = Math.Max(Fuzzy.Score(q, w.Title) - 120, Fuzzy.Score(q, w.ProcessName) - 220);
-            if (s < 0) continue;
-            results.Add(WindowItem(w, wm, s - 40 + Boost("win:" + w.ProcessName, currentWs) * 0.5));
-        }
-
-        if (query.WorkspaceToken is null)
-        {
-            foreach (var c in Commands)
-            {
-                double s = Fuzzy.Score(q, c.Title);
-                if (s < 0) continue;
-                results.Add(CommandItem(c, s - 80 + Boost(c.UsageKey, currentWs)));
-            }
-        }
-
-        results.Sort((a, b) => b.Score.CompareTo(a.Score));
-        if (results.Count > MaxResults) results.RemoveRange(MaxResults, results.Count - MaxResults);
-        return results;
+        var ranked = results.OrderByDescending(entry => entry.Result.Match.Quality)
+            .ThenByDescending(entry => OpenPriority(entry.Result.TargetWindow, currentWs))
+            .ThenByDescending(entry => entry.Score)
+            .ThenBy(entry => entry.Result.Item.Title, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entry => entry.Result.Item.Id, StringComparer.Ordinal)
+            .Take(MaxResults)
+            .Select(entry => entry.Result.Item)
+            .ToList();
+        foreach (var item in ranked) item.Highlight(query.Text);
+        return ranked;
     }
 
-    private double Boost(string key, string? ws) =>
-        Math.Min(usage.Global(key) * 25, 150) + Math.Min(usage.ForWorkspace(ws, key) * 60, 250);
-
-    private void AddRecents(List<ResultItem> into, WmSnapshot wm, string? ws, Dictionary<AppEntry, List<WmWindow>> running)
+    private static int OpenPriority(WmWindow? window, string? currentWorkspace)
     {
-        var byKey = apps.Apps.ToDictionary(a => a.UsageKey);
-        foreach (var (key, score) in usage.Top(ws, 6))
-        {
-            if (byKey.TryGetValue(key, out var app))
-                into.Add(AppItem(app, wm, score, running.GetValueOrDefault(app)));
-            else if (Commands.FirstOrDefault(c => c.UsageKey == key) is { } cmd)
-                into.Add(CommandItem(cmd, score));
-        }
+        if (window is null) return 0;
+        return currentWorkspace is not null && window.WorkspaceName is not null && window.WorkspaceName != currentWorkspace
+            ? 2 : 1;
     }
 
-    /// <summary>Windows for the empty-query switcher: other workspaces first (that's where you
-    /// want to jump), then the current one; each group by workspace then title.</summary>
-    private static IEnumerable<WmWindow> OrderedWindows(WmSnapshot wm) =>
-        wm.Windows
-            .OrderBy(w => w.WorkspaceName == wm.FocusedWorkspace?.Name ? 1 : 0)
-            .ThenBy(w => w.WorkspaceName, StringComparer.Ordinal)
-            .ThenBy(w => w.Title, StringComparer.OrdinalIgnoreCase);
-
-    private static ResultItem AppItem(AppEntry app, WmSnapshot wm, double score, List<WmWindow>? running)
-    {
-        running ??= [];
-        string badge = running.Count == 0 ? "" :
-            "● " + string.Join(" ", running.Select(w => wm.LabelFor(w.WorkspaceName)).Distinct().OrderBy(x => x, StringComparer.Ordinal));
-        return new ResultItem
-        {
-            Kind = ResultKind.App,
-            Title = app.Name,
-            Subtitle = running.Count == 0 ? "Application" : $"Application · {running.Count} open",
-            Badge = badge,
-            UsageKey = app.UsageKey,
-            Score = score,
-            App = app,
-            RunningWindows = running,
-        };
-    }
-
-    private static ResultItem WindowItem(WmWindow w, WmSnapshot wm, double score) => new()
-    {
-        Kind = ResultKind.Window,
-        Title = string.IsNullOrWhiteSpace(w.Title) ? w.ProcessName : w.Title,
-        Subtitle = $"Window · {w.ProcessName}",
-        Badge = "ws " + wm.LabelFor(w.WorkspaceName),
-        UsageKey = "win:" + w.ProcessName,
-        Score = score,
-        Window = w,
-    };
-
-    private static ResultItem CommandItem(LauncherCommand c, double score) => new()
-    {
-        Kind = ResultKind.Command,
-        Title = c.Title,
-        Subtitle = c.Subtitle,
-        Glyph = c.Glyph,
-        UsageKey = c.UsageKey,
-        Score = score,
-        Command = c,
-    };
+    private double UsageBoost(string key, string? workspace) =>
+        Math.Min(usage.Global(key) * 4, 12) + Math.Min(usage.ForWorkspace(workspace, key) * 8, 24);
 }
 
 /// <summary>

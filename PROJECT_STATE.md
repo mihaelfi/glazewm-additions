@@ -295,17 +295,19 @@ checked afterwards. If it comes back, look for another child process of Zebar ho
 
 A resident WPF (.NET 10) app in `C:\codex\glazewm\launcher\`. It replaces PowerToys Run on Alt+Space
 (PowerToys Run is turned off; Command Palette stays on Win+Alt+Space) and knows about GlazeWM's monitors, workspaces and windows. Same performance rule as the bar: it stays
-resident with its window pre-created (showing it is just `Show()`), gets pushed updates from GlazeWM
+resident with its window pre-created, gets pushed updates from GlazeWM
 instead of polling, and does shell work on one background STA thread.
 
 ### Using it
 
 - **Alt+Space** toggles it. It opens centred on the monitor GlazeWM has focused, a fifth of the way down. Esc, or clicking elsewhere, closes it.
+  The content fades and slides into place over 125 ms. The selected row has a lavender accent that fades in over 85 ms. Both effects respect Windows' animation setting. Typing, navigation, closing and opening a result respond immediately.
 - An **empty query** lists recent items for the current workspace, then every open window (other workspaces first) as a window switcher.
 - Typing searches **apps** (Start menu and Store apps, from `shell:AppsFolder`), **open windows** (by title or process),
   and **commands** (tiling direction, floating, fullscreen, redraw, reload config, pause, workspace Sync, re-index, quit).
-  Matching ranks prefix > whole word > word start > initials (`vsc` → Visual Studio Code) > substring > subsequence,
-  plus a frecency boost that is stronger for the current workspace.
+  Matching ranks exact > prefix or whole word > word start > initials (`vsc` → Visual Studio Code) > substring > subsequence.
+  Within one match tier, a concrete open window on another workspace comes first, then open windows on the current workspace, then app and command results. Provider priority and a bounded frecency boost refine the order within each group.
+  The matching characters are highlighted in result titles, including non-adjacent fuzzy matches. When a window only matches by process name, the highlight is in its subtitle. The `@N` workspace token is separate from the text match.
 - **Apps:** Enter opens it. If it is already open, Enter focuses its window instead; pressing it again cycles through that app's windows.
   Ctrl+Enter always opens a new window. The badge `● 12 21` shows the workspaces where it's open.
 - **Windows:** Enter switches to the window's workspace if hidden and focuses the selected window. Ctrl+Enter brings it to the current workspace.
@@ -321,13 +323,16 @@ instead of polling, and does shell work on one background STA thread.
 | `App.xaml.cs` | Single instance (mutex `Local\GlazeLauncher.Instance`), Alt+Space `RegisterHotKey` (retried every 5 s while another program holds it), named-pipe server `GlazeLauncher`, and the detached relaunch |
 | `GlazeClient.cs` | WebSocket client for GlazeWM IPC `ws://127.0.0.1:6123`: `sub --events …`, `query monitors`, `command [--id X] …`. On any event it re-queries the tree (80 ms debounce) and forwards `window_managed` |
 | `AppIndex.cs` | Enumerates `shell:AppsFolder` through `Shell.Application` (~270 apps in ~400 ms), re-indexed when it is opened and the index is older than 2 min |
-| `Search.cs` | Query parsing (`@N`), fuzzy scoring, ranking, built-in command list, `WindowIdentity` |
+| `Search.cs` | Query parsing (`@N`), fuzzy match tiers and character positions, merged ranking, shared result model, `WindowIdentity` |
+| `SearchProviders.cs` | `ISearchProvider` contract and the compiled-in app, window and command providers |
 | `Actions.cs` | Launch / focus / move. Open app and window results share a focus path that runs `focus --workspace N` for hidden workspaces before `focus --container-id`. After an `@N` launch, the next matching `window_managed` window (within 15 s) gets `move --workspace N` and uses the same focus path if following. |
 | `IconCache.cs` | Shell icons (`IShellItemImageFactory`, 48px, alpha kept) loaded on the STA thread, all app icons warmed after indexing |
 | `UsageStore.cs` | Frecency (half-life 10 days), global and per workspace, saved to `usage.json` |
 | `MainWindow.xaml(.cs)` | UI (bar palette `#151b30` / `#b6acff`, DWM rounded corners), keys, placement |
+| `HighlightedTextBlock.cs` | Renders matching characters as WPF runs and keeps Unicode text elements intact |
 
 - **Matching a window to an app.** An app's IDs are its AppsFolder ID (an AUMID or a path), its exe name, its name with spaces removed, and for packaged apps the family name plus a small alias table (`PackagedProcessAliases`: Terminal, Notepad, Calculator, Paint). A window's IDs are its process name, its process's packaged AUMID (`GetApplicationUserModelId`), and its window AUMID (`PKEY_AppUserModel_ID`). They match if the two sets share any ID. Squirrel apps (Discord) point at `Update.exe`, which is ignored; the name match covers them.
+- **Adding a provider.** Register it in `App.xaml.cs`. Search reads a cached snapshot and returns `ProviderResult` entries with a stable ID, match, optional hosting `WmWindow`, display fields, and an async activation callback. The engine ranks results centrally and the UI renders the supplied icon, text and key hints. Populate future provider caches outside the keystroke path. A tab provider can attach its result to the hosting window for workspace ranking, then call `Actions.FocusWindow` and select the specific tab by its provider ID.
 - **Launching** uses ShellExecute on `shell:AppsFolder\<id>`, which works for Win32 and Store apps alike.
 - **Detached relaunch:** started without `--detached`, the exe relaunches itself through ShellExecute (no handle inheritance) and exits. That's the same protection the Zebar collector has against keeping a parent's sockets alive.
 - **Command line:** `GlazeLauncher.exe --toggle|--show|--hide|--reindex|--quit` forwards the command to the running instance over the pipe. With no argument a second start toggles.
@@ -359,6 +364,8 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
 - `.glzr\glazewm\backup-before-nine-workspaces-20261127-110114\`: config + script from the 10–19 / 20–29 version
 - `.glzr\glazewm\config.before-launcher-20261127-140419.yaml`: config before the launcher (alt+space was `wm-cycle-focus`)
 - `.glzr\launcher\before-workspace-focus-20261127-150241\`: installed launcher files from before the workspace focus fix
+- `.glzr\launcher\before-motion-and-matches-20261127-152447\`: installed launcher files from before the animation and highlight update
+- `.glzr\launcher\before-provider-ranking-20261127-154402\`: installed launcher files from before the provider and ranking update
 - `.glzr\zebar\settings.before-cpu-activity-20261127-111335.json`: starter-pack Zebar settings
 - `.glzr\zebar\cpu-activity\backup-before-gpu-20261127-124849\`: installed `dist\`, `zpack.json` and collector exe from before the GPU widget and toggle
 - `.glzr\zebar\cpu-activity\bar.before-workspace-icons-20261127-111836.html`, `bar.before-widget-reorder-20261127-114545.html`, `bar.before-short-language-labels-20261127-120006.html`
@@ -372,7 +379,8 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
 - Launcher, not yet checked: Ctrl+1…9 from the keyboard, and `@N` launches of apps that start slowly or
   hand off to another process (only Notepad silent → ws 23 was tested). Store apps whose process name doesn't match their package
   may need an entry in `PackagedProcessAliases`.
-- The workspace focus fix was checked live with Signal's Application result. The Window result uses the same focus path and still needs a separate UI check.
+- Future browser tab provider. An opt-in extension can track open tab IDs and select a specific tab with the browser's Tabs API. It needs a reliable mapping from browser window IDs to GlazeWM windows, including multiple browser windows and profiles. [Chrome Tabs API](https://developer.chrome.com/docs/extensions/reference/api/tabs/)
+- Future Explorer provider. Add open folder paths using the Windows Shell windows collection. Investigate reliable tab enumeration and selection on Windows 11, with window-level results on systems where tabs are unavailable. [Shell windows collection](https://learn.microsoft.com/en-us/windows/win32/api/exdisp/nn-exdisp-ishellwindows) · [Windows 11 File Explorer tabs](https://blogs.windows.com/windowsexperience/2022/10/18/making-the-everyday-easier-with-new-experiences-available-in-windows-11/)
 - Launcher ideas for later: user-defined script commands (JSON), calculator, web search, per-workspace "default apps", a setting for the hotkey.
 - The toggle has only been tested with the bar on the primary monitor. The other monitor's bar should behave the same way (each bar tracks its own panels), but that hasn't been checked.
 
@@ -381,6 +389,10 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
 Newest first. One entry per piece of work: date, what changed, files touched, anything left unfinished.
 
 ### 2026-11-27
+- **Added search providers and prioritized open windows.** `SearchProviders.cs` separates app, window and command results. `Search.cs` ranks a shared match tier and workspace ahead of provider priority and usage. `Actions.cs`, `App.xaml.cs` and `MainWindow.xaml.cs` use provider-owned actions and result metadata. Browser and Explorer tab providers remain open items.
+  - Checked ranking, recents, provider priorities, activation callbacks and highlight fields with a local harness. Published and installed the launcher. From ws 14, `cla` selected Claude's Window result above its Application row, and Enter made the existing Claude window visible and foreground on ws 11.
+- **Added launcher transitions and match highlights.** `MainWindow.xaml` and `.xaml.cs` add a short opening effect and clearer selection and search focus, with motion controlled by Windows' animation setting. `Search.cs`, `HighlightedTextBlock.cs`, and `App.xaml` highlight the characters found by the existing matcher. The ranking comparison passed for 20,000 queries. Published and restarted the installed launcher.
+  - Checked the opening and settled frames, the `sig` prefix, the `vsc` initials with a workspace target, and a process-only `windowsterminal` match in the subtitle.
 - **Published the source repository to GitHub.** Created private `mihaelfi/glazewm-additions` using the verified `mihaelfi` GitHub CLI session and set it as `origin` for `main`. The repository name distinguishes this launcher and widget pack from GlazeWM itself.
 - **Started tracking GlazeLauncher and the Zebar widget pack in Git.** Both sources, dependency lockfiles, and project notes are tracked together on `main`. The root `.gitignore` excludes the GlazeWM installer and launcher build outputs. The existing widget `.gitignore` excludes widget build outputs and dependency caches.
 - **Fixed switching to an open window on a hidden workspace.** GlazeWM 3.10.1's `focus --container-id` changed focus order without redrawing the old and new workspaces. `launcher/Actions.cs` now explicitly switches to a hidden workspace before focusing the selected window. The same path handles windows that the launcher moves and follows. Published and restarted the installed launcher through GlazeWM.

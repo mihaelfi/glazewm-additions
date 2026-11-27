@@ -76,9 +76,11 @@ public partial class App : Application
         _glaze = new GlazeClient();
         var identity = new WindowIdentity();
         var actions = new Actions(_glaze, _usage, identity);
-        var search = new SearchEngine(apps, _usage, identity);
+        var search = new SearchEngine(
+            [new AppSearchProvider(apps, identity, actions), new WindowSearchProvider(identity, actions), new CommandSearchProvider(actions)],
+            _usage);
 
-        _window = new MainWindow(_glaze, apps, search, actions, icons, identity);
+        _window = new MainWindow(_glaze, apps, search, actions, icons);
         var hwnd = _window.Prepare();
         HwndSource.FromHwnd(hwnd)!.AddHook(WndProc);
         RegisterHotkeyWithRetry(hwnd);
