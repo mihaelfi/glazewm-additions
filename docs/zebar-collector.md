@@ -5,7 +5,7 @@ Front-end widgets are described in [`zebar.md`](zebar.md); changes to the collec
 
 A windowless Rust HTTP server, built as `zebar-cpu-collector.exe`, shared by every bar. All sampling
 happens here, not in the webviews. Files: `main.rs` (server, sampling loop, endpoints), `processes.rs`,
-`gpu.rs`, `settings.rs`, `timer.rs`, `state_file.rs`.
+`gpu.rs`, `drive_io.rs`, `pdh.rs`, `settings.rs`, `timer.rs`, `state_file.rs`.
 
 ## Server
 
@@ -22,7 +22,8 @@ happens here, not in the webviews. Files: `main.rs` (server, sampling loop, endp
 
 ## Endpoints (all POST, because Zebar's service worker caches cross-origin GETs)
 
-- `/history?session=&after=&limit=<seconds>` → `{ session, settingsVersion, timer, gpus, samples }`: new samples since `after`.
+- `/history?session=&after=&limit=<seconds>` → `{ session, settingsVersion, timer, gpus, driveRates, samples }`:
+  new historical samples since `after` and the latest rate snapshot by drive letter.
 - `/memory/processes` → top 10 processes by working set, from the latest 1 s sample.
 - `/cpu/processes?window=<seconds>` → `{ window, processes: [{ name, pid, current, average, peak }] }`: the top 40 by average.
   Values are % of **total** CPU (Task Manager style); `window` is the number of seconds covered.
@@ -58,12 +59,23 @@ Uses the same sources as Task Manager, so it works for any vendor:
 - **dwm.exe** reports about 17 GB of "dedicated" memory. That is the real counter value (Task Manager shows the same), not a bug.
 - **Cost:** about 2 ms per sample.
 
+### Disk throughput (`drive_io.rs`)
+
+- Reads `LogicalDisk(*)` read/write bytes per second from Windows Performance Data Helper on the
+  existing one-second tick. The GPU and disk samplers share the PDH query and wildcard-reading code
+  in `pdh.rs`.
+- Reports only drive-letter instances as `{ read, write }` in `driveRates`. A missing instance or
+  `null` direction means the counter was unavailable. A zero means the counter measured no traffic.
+- Holds only the latest snapshot. The frontend joins it to Zebar's capacity data by drive letter.
+
 ## Settings storage (`settings.rs`)
 
 - The collector owns `settings.json` next to its exe (the pack folder). Missing = defaults.
 - Saves are cleaned up (unknown history value → 1, invalid letters dropped, all bar items off → all on) and written
   atomically (temp file + rename, `state_file.rs`). Bad JSON → 400; a wrong Origin → 403, like every endpoint.
 - Every `/history` response carries `settingsVersion` so bars refetch after a change.
+- `driveActivity` maps drive letters to their bar mode. The default is empty. Saving removes invalid
+  letters and capacity-only entries. A hidden drive keeps its saved mode.
 
 ## Timer (`timer.rs`)
 
@@ -77,3 +89,17 @@ Uses the same sources as Task Manager, so it works for any vendor:
 
 Stop `zebar-cpu-collector` (the exe is locked while it runs) and copy in a **retry loop**: the bar restarts it
 within a few hundred ms, so a single stop-then-copy can fail with "file in use".
+
+## Known issues and backups
+
+- Volumes with no usable Windows logical disk counter show unavailable rates.
+- Live collector backups are listed in [Zebar](zebar.md#backups).
+
+## Change log
+
+### 2026-11-27
+- **Added logical disk throughput.** `drive_io.rs` samples two counters, `pdh.rs` extracts the existing
+  PDH code from `gpu.rs`, and `main.rs` carries current rates in `/history`. `settings.rs` persists
+  and validates per-drive modes. The collector retains the latest rates. An isolated collector
+  measured a test write and verified older settings and restart persistence. The deployed collector
+  returned all six drive letters alongside CPU and GPU data.

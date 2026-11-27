@@ -2,9 +2,10 @@ import { createMemo, For, Show } from 'solid-js';
 import { render } from 'solid-js/web';
 import { shellSpawn } from 'zebar';
 import { useCloseActivityPanel } from './activity-panel';
+import { useMetricsFeed } from './metrics-feed';
 import { PanelHeader } from './panel-header';
 import { showsDrive, useSettings } from './settings';
-import { driveLevel, formatDriveSize, useDrives, type Drive } from './drives';
+import { driveLevel, formatDriveRate, formatDriveSize, useDrives, type Drive } from './drives';
 import './widget.css';
 
 // Must match the program allowed for this widget in zpack.json.
@@ -13,6 +14,7 @@ const EXPLORER = 'C:\\Windows\\explorer.exe';
 function StoragePanel() {
   const close = useCloseActivityPanel();
   const { settings } = useSettings();
+  const { driveRates } = useMetricsFeed(false, () => 1);
   const allDrives = useDrives();
   const drives = createMemo(() => allDrives().filter(drive => showsDrive(settings(), drive.letter)));
   const totals = createMemo(() => drives().reduce(
@@ -63,6 +65,10 @@ function StoragePanel() {
                   </span>
                   <span class="drive-free"><strong>{formatDriveSize(drive.free)}</strong> free of {formatDriveSize(drive.total)}</span>
                   <i class="drive-row-meter" aria-hidden="true" style={{ '--used': `${drive.used}%` }} />
+                  <span class="drive-row-activity">
+                    <span><span class="drive-read">Read</span> <strong>{formatDriveRate(driveRates()?.[drive.letter]?.read)}</strong></span>
+                    <span><span class="drive-write">Write</span> <strong>{formatDriveRate(driveRates()?.[drive.letter]?.write)}</strong></span>
+                  </span>
                   <span class="drive-used">{Math.round(drive.used)}% used</span>
                 </button>
               </li>

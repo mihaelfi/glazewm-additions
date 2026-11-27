@@ -182,12 +182,12 @@ Items:
 
 ## Zebar: storage
 
-- **Disk read and write rates per drive** · `idea` · M. The collector can read per-volume counters
-  (`\LogicalDisk(*)\Disk Read Bytes/sec` and `Disk Write Bytes/sec`) with the same PDH code the GPU uses, keyed by drive letter so it
-  lines up with the storage card. To discuss: what goes on the bar (keep free space only, or add an activity hint) and what the popup
-  shows (read/write graphs per drive, or a drive × time heatmap like the CPU one).
-  The user's ask (2026-11-27): r/w speeds per drive in the drive indicator, padded to a fixed width so the bar doesn't shift as
-  the numbers change; or a small graph per drive instead, so there's history.
+- **Disk read and write rates per drive** · `done` 2026-11-27. The bar supports per-drive Live rates
+  with fixed-width readouts, Activity marks, or None. The Storage popup shows exact speeds for all
+  listed drives. See [Zebar storage](zebar.md#storage-card-and-popup-srcdrivestsx-srcstorage-paneltsx).
+- **Drive meter track contrast** · `done` 2026-11-27. Brightened the bar's meter tracks so partially filled
+  meters show their full height next to a nearly full drive.
+- **Disk activity history** · `idea`. Consider a read/write graph for the selected drive in the Storage popup.
 - **Space map, TreeSize-style** · `idea` · L. A separate helper program (not the collector: scanning terabytes is heavy and runs on
   demand) that scans a drive, caches the result and shows where the space goes at a glance. Scan options to weigh: reading the NTFS
   master file table directly (very fast, needs admin) or ordinary directory listing (no admin, slower).

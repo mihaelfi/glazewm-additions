@@ -3,11 +3,11 @@ import { render } from 'solid-js/web';
 import { createProvider } from 'zebar';
 import { usePanelToggle, type PanelName } from './activity-panel';
 import { formatClock, useClockTime } from './clock';
-import { describeDrive, DriveBars, useDrives } from './drives';
+import { describeDrive, describeDriveActivity, DriveBars, useDrives } from './drives';
 import { Heatmap } from './heatmap';
 import { HistoryGraph } from './history-graph';
 import { memoryPercent, useMetricsFeed } from './metrics-feed';
-import { type BarItem, formatWindow, gpuIndex, showsDrive, useSettings } from './settings';
+import { type BarItem, driveActivityMode, formatWindow, gpuIndex, showsDrive, useSettings } from './settings';
 import { clearTimer, elapsedPercent, isOverdue, timerChanged, timerLabel } from './timer';
 import { appsInWorkspace, watchWorkspaceApps, type WorkspaceApp } from './workspace-apps';
 import './widget.css';
@@ -32,11 +32,15 @@ function Bar() {
   const [acknowledging, setAcknowledging] = createSignal(false);
   const { settings, sync } = useSettings();
   const historySeconds = () => settings().historyMinutes * 60;
-  const { samples, status, gpus, settingsVersion, activeTimer } = useMetricsFeed(true, historySeconds);
+  const { samples, status, gpus, settingsVersion, activeTimer, driveRates } = useMetricsFeed(true, historySeconds);
   createEffect(() => sync(settingsVersion()));
   const panels = usePanelToggle();
   const allDrives = useDrives();
   const drives = createMemo(() => allDrives().filter(drive => showsDrive(settings(), drive.letter)));
+  const activityMode = (letter: string) => driveActivityMode(settings(), letter);
+  const storageLabel = () => drives().map(drive => activityMode(drive.letter) === 'none'
+    ? describeDrive(drive)
+    : `${describeDrive(drive)}. ${describeDriveActivity(driveRates()?.[drive.letter])}`).join('. ');
   const shows = (item: BarItem) => settings().bar[item];
   const windowLabel = () => `last ${formatWindow(historySeconds())}`;
 
@@ -181,14 +185,15 @@ function Bar() {
         <Show when={shows('storage') && drives().length}>
           <button
             class="metric-button storage-button"
-            aria-label={`Storage. ${drives().map(describeDrive).join('. ')}. Open storage details`}
+            aria-label={`Storage. ${storageLabel()}. Open storage details`}
             aria-haspopup="dialog"
             title={panelError() === 'storage-activity' ? 'Storage details could not open. Click to retry.'
-              : `${drives().map(describeDrive).join('\n')}\nClick for details.`}
+              : `${drives().map(describeDrive).join('\n')}${drives().some(drive => activityMode(drive.letter) === 'marks')
+                ? '\nActivity marks: read above, write below.' : ''}\nClick for details.`}
             onPointerDown={() => panels.press('storage-activity')}
             onClick={() => void togglePanel('storage-activity')}
           >
-            <DriveBars drives={drives()} />
+            <DriveBars drives={drives()} rates={driveRates()} mode={activityMode} />
           </button>
         </Show>
         <Show when={shows('ram')}>

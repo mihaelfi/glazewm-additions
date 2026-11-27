@@ -2,7 +2,7 @@
 //! widget pack folder). The collector owns the file so every bar and popup
 //! reads one copy, and the file can also be edited by hand.
 
-use std::{io, path::PathBuf};
+use std::{collections::BTreeMap, io, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use crate::state_file;
@@ -23,10 +23,21 @@ pub struct Settings {
     pub bar: BarItems,
     /// Drive letters shown in storage. `None` shows every drive, including new ones.
     pub drives: Option<Vec<String>>,
+    /// Bar activity modes by drive letter. Missing letters show capacity only.
+    pub drive_activity: BTreeMap<String, DriveActivity>,
     /// Name of the GPU the bar follows. `None` picks the one with the most video memory.
     pub gpu_adapter: Option<String>,
     pub clock_format: String,
     pub repeat_timer_chime: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DriveActivity {
+    Marks,
+    Rates,
+    #[serde(other)]
+    None,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -42,6 +53,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             history_minutes: 1, bar: BarItems::default(), drives: None, gpu_adapter: None,
+            drive_activity: BTreeMap::new(),
             clock_format: DEFAULT_CLOCK_FORMAT.into(),
             repeat_timer_chime: true,
         }
@@ -66,10 +78,11 @@ impl Settings {
             self.bar = BarItems::default();
         }
         if let Some(drives) = &mut self.drives {
-            drives.retain(|letter| letter.len() == 1 && letter.chars().all(|c| c.is_ascii_uppercase()));
+            drives.retain(|letter| valid_drive_letter(letter));
             drives.sort();
             drives.dedup();
         }
+        self.drive_activity.retain(|letter, mode| valid_drive_letter(letter) && *mode != DriveActivity::None);
         self.gpu_adapter = self
             .gpu_adapter
             .map(|name| name.trim().chars().take(MAX_ADAPTER_NAME).collect::<String>())
@@ -83,6 +96,10 @@ impl Settings {
         }
         self
     }
+}
+
+fn valid_drive_letter(letter: &str) -> bool {
+    matches!(letter.as_bytes(), [letter] if letter.is_ascii_uppercase())
 }
 
 #[derive(Serialize)]

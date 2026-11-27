@@ -1,6 +1,8 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod drive_io;
 mod gpu;
+mod pdh;
 mod processes;
 mod settings;
 mod state_file;
@@ -53,6 +55,8 @@ struct History<'a> {
     settings_version: u64,
     timer: Option<timer::Timer>,
     gpus: &'a [gpu::AdapterInfo],
+    #[serde(rename = "driveRates")]
+    drive_rates: &'a drive_io::Rates,
     samples: Vec<&'a Sample>,
 }
 
@@ -62,6 +66,8 @@ struct State {
     system: System,
     processes: processes::ProcessSampler,
     gpu: Option<gpu::GpuSampler>,
+    disk: Option<drive_io::Sampler>,
+    drive_rates: drive_io::Rates,
     settings: settings::SettingsStore,
     timer: timer::TimerStore,
 }
@@ -99,6 +105,8 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             std::thread::available_parallelism().map_or(1, usize::from),
         ),
         gpu: gpu::GpuSampler::new(),
+        disk: drive_io::Sampler::new(),
+        drive_rates: drive_io::Rates::new(),
         settings: settings::SettingsStore::load(),
         timer: timer::TimerStore::load(),
     };
@@ -111,6 +119,9 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         let now = Instant::now();
         if now >= sample_at {
             state.timer.tick(state.settings.settings.repeat_timer_chime);
+            if let Some(disk) = &mut state.disk {
+                disk.sample(&mut state.drive_rates);
+            }
             let State { system, history, gpu, processes, .. } = &mut state;
             system.refresh_cpu_usage();
             system.refresh_memory_specifics(MemoryRefreshKind::nothing().with_ram());
@@ -260,6 +271,7 @@ fn serve_metrics(mut request: Request, state: &mut State) -> Result<bool, serde_
             settings_version: state.settings.version,
             timer: state.timer.active,
             gpus: state.gpu.as_ref().map_or(&[], |gpu| &gpu.adapters),
+            drive_rates: &state.drive_rates,
             samples: newer.into_iter().skip(skip).collect(),
         })?
     };

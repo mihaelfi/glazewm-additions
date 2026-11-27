@@ -4,7 +4,7 @@ import { useCloseActivityPanel } from './activity-panel';
 import { ClockSettings } from './clock-settings';
 import { formatDriveSize, useDrives } from './drives';
 import { requestMetrics, type GpuAdapter } from './metrics-feed';
-import { type BarItem, HISTORY_CHOICES, type Settings, useSettings } from './settings';
+import { type BarItem, driveActivityMode, type DriveActivityMode, HISTORY_CHOICES, type Settings, useSettings } from './settings';
 import './widget.css';
 import './clock.css';
 
@@ -52,6 +52,13 @@ function SettingsPanel() {
     const letters = drives().map(drive => drive.letter).filter(other => other === letter ? shown : driveShown(other));
     // Every drive selected means "all", so drives added later appear too.
     update({ drives: letters.length === drives().length ? null : letters });
+  }
+
+  function changeDriveActivity(letter: string, mode: DriveActivityMode) {
+    const driveActivity = { ...settings().driveActivity };
+    if (mode === 'none') delete driveActivity[letter];
+    else driveActivity[letter] = mode;
+    void update({ driveActivity });
   }
 
   return (
@@ -110,23 +117,36 @@ function SettingsPanel() {
 
         <section class="settings-section" aria-labelledby="drives-setting">
           <h2 id="drives-setting">Drives</h2>
-          <p>Shown in the storage card and popup. With all selected, new drives appear automatically.</p>
+          <p>Choose which drives to show and how each displays activity on the bar. The popup shows speeds for all selected drives.</p>
           <Show when={drives().length} fallback={<p>Looking for drives…</p>}>
             <div class="check-list">
               <For each={drives()}>
                 {drive => {
                   const locked = () => driveShown(drive.letter) && shownDriveCount() === 1;
                   return (
-                    <label class="check-row" title={locked() ? 'Keep at least one drive' : undefined}>
-                      <input
-                        type="checkbox"
-                        checked={driveShown(drive.letter)}
-                        disabled={locked()}
-                        onChange={event => toggleDrive(drive.letter, event.currentTarget.checked)}
-                      />
-                      <b>{drive.letter}:</b> {drive.label}
-                      <small>{formatDriveSize(drive.total)}</small>
-                    </label>
+                    <div class="settings-drive">
+                      <label class="check-row" title={locked() ? 'Keep at least one drive' : undefined}>
+                        <input
+                          type="checkbox"
+                          checked={driveShown(drive.letter)}
+                          disabled={locked()}
+                          onChange={event => toggleDrive(drive.letter, event.currentTarget.checked)}
+                        />
+                        <b>{drive.letter}:</b>
+                        <span class="settings-drive-name" title={drive.label}>{drive.label}</span>
+                        <small>{formatDriveSize(drive.total)}</small>
+                      </label>
+                      <select
+                        aria-label={`${drive.letter}: activity on the bar`}
+                        value={driveActivityMode(settings(), drive.letter)}
+                        disabled={!driveShown(drive.letter)}
+                        onChange={event => changeDriveActivity(drive.letter, event.currentTarget.value as DriveActivityMode)}
+                      >
+                        <option value="none">None</option>
+                        <option value="marks">Activity marks</option>
+                        <option value="rates">Live rates</option>
+                      </select>
+                    </div>
                   );
                 }}
               </For>

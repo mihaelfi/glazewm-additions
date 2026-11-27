@@ -99,21 +99,24 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
 ## Storage card and popup (`src/drives.tsx`, `src/storage-panel.tsx`)
 
 - **Bar card**: one framed card, like RAM/CPU/GPU, with a mini bar chart: one small
-  vertical bar per drive, filled to its **used** %, with the letter underneath. It has **no
-  text label** (decided 2026-11-27): you can see the state at a glance, and the details are in the popup.
-  The hover tooltip lists `X: N free of M (P% used)` for every drive. Clicking toggles the popup.
+  vertical bar per drive, filled to its **used** %, with the letter underneath. A lighter slate-blue
+  track makes the full meter height visible above the fill. Each drive can show
+  **Live rates** (stacked R/W with fixed-width values and units), **Activity marks** (cyan read above
+  pink write, bright with activity), or **None** (capacity only, the default).
+  The hover tooltip lists free space for each drive and explains the marks when shown. Clicking toggles the popup.
 - **Storage popup** (`storage-activity`, 576 × 470): total free and total capacity,
   the fullest drive, and one row per drive (letter badge, volume label, file system,
-  "N free of M", a horizontal used bar, used %). **Clicking a row opens that drive in File
-  Explorer** and closes the popup.
+  "N free of M", a horizontal used bar, used %, live read and write speeds regardless of its bar mode).
+  **Clicking a row opens that drive in File Explorer** and closes the popup.
 - **History of this design:** the first version (2026-11-27) put six loose `C | 947 GB` items on the bar.
   It looked out of place next to the framed cards, the thin bar read like a text cursor, and it was
   the widest group on the bar. It was replaced with the card and popup above.
-- **Units:** binary, with GB/TB labels to match Explorer. Below 10 GB one decimal, below
-  1 TB whole GB, from 1 TB up TB with one decimal (`formatDriveSize`).
+- **Units:** capacity uses binary GB/TB labels to match Explorer. Below 10 GB one decimal, below
+  1 TB whole GB, from 1 TB up TB with one decimal (`formatDriveSize`). Throughput uses decimal
+  B/s through TB/s, with up to three significant digits, `0 B/s` for idle and `—` for unavailable.
 - **Colours:** blue normally, amber at ≥ 85% used, red at ≥ 95% used, on the card bars, the row bars and the letters.
-- **Data:** Zebar's built-in `disk` provider with `refreshInterval: 60000` (`useDrives()`). It's used
-  in both the bar and the popup and doesn't touch the collector, because free space changes slowly.
+- **Data:** both views get capacity from Zebar's built-in `disk` provider every 60 s and read/write
+  rates from the existing one-second collector feed. The popup requests only the latest sample.
 - **Opening Explorer:** the popup calls `shellSpawn('C:\Windows\explorer.exe', ['D:\'])`. The
   widget's zpack privilege allows only that program with `argsRegex` `^[A-Z]:\\$` (JSON: `"^[A-Z]:\\\\$"`) (one drive
   root). Checked: the `explorer.exe` that Zebar starts hands off to Windows' COM Explorer
@@ -144,6 +147,7 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
   | `historyMinutes` | 1, 5, 10, 15 | 1 | Window for every graph, heatmap, "N ago" label and the CPU process Avg/Peak |
   | `bar.storage/ram/cpu/gpu` | booleans | all `true` | Which cards the bar shows. At least one must stay, because the cards are the only way into the popups (enforced in the UI and the collector) |
   | `drives` | letters or `null` | `null` = all | Drives in the storage card **and** popup. Selecting every drive saves `null`, so drives added later show up |
+  | `driveActivity` | drive letter → `marks` or `rates` | empty | Bar activity display per drive. Missing letters are **None**. Hiding a drive keeps its activity preference |
   | `gpuAdapter` | adapter name or `null` | `null` = most video memory | GPU the bar's GPU card follows. The GPU popup also opens on that tab |
 
 - **Live updates:** every `/history` response carries `settingsVersion`. The bar passes it to
@@ -185,12 +189,16 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 
 ## Known issues and unverified
 
+- Check how many Live rates readouts fit on a narrow monitor with several workspaces and all other status cards enabled.
 - Check native clock popup placement and dismissal on both monitors, and listen for the chime on the desktop.
 - **Not yet portable:** the installed `zpack.json` uses the absolute collector path `C:\Users\mihae\...`. Zebar matches the program as an exact string, so a relative path can't work; the planned install script writes the real path (see the backlog's install script item).
 - The panel toggle has only been tested with the bar on the primary monitor. The other monitor's bar should behave the same way (each bar tracks its own panels), but that hasn't been checked.
 
 ## Backups
 
+- `.glzr\zebar\cpu-activity\dist.before-drive-meter-contrast-20261127-203606`: installed assets before the bar meter contrast change.
+- `.glzr\zebar\cpu-activity\dist.before-disk-activity-20261127-202906` and
+  `zebar-cpu-collector.exe.before-disk-activity-20261127-202906`: installed assets and collector before disk activity.
 - `.glzr\zebar\settings.before-cpu-activity-20261127-111335.json`: starter-pack Zebar settings
 - `.glzr\zebar\cpu-activity\backup-before-gpu-20261127-124849\`: installed `dist\`, `zpack.json` and collector exe from before the GPU widget and toggle
 - `.glzr\zebar\cpu-activity\bar.before-workspace-icons-20261127-111836.html`, `bar.before-widget-reorder-20261127-114545.html`, `bar.before-short-language-labels-20261127-120006.html`
@@ -203,6 +211,15 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 Newest first. Covers the whole pack, front end and collector.
 
 ### 2026-11-27
+- **Brightened the background track on the bar's drive meters** in `src/widget.css` so partially filled
+  drives show the same full height as a nearly full drive. Verified equal 20 px tracks and red fill on
+  the nearly full meter in the browser. Deployed the rebuilt assets and verified the Zebar restart.
+- **Added per-drive read/write indicators.** Settings → Drives selects Live rates, Activity marks, or None.
+  The Storage popup shows both speeds. Changed `src/drives.tsx`, `src/bar.tsx`, `src/storage-panel.tsx`,
+  `src/settings.ts`, `src/settings-panel.tsx`, `src/metrics-feed.ts` and `src/widget.css`.
+  Deployed the pack and [collector](zebar-collector.md). Headless browser checks covered mixed modes, saved settings,
+  stable readout width as units change, idle and unavailable values, six-drive and narrow popup layouts, and Explorer launch.
+  The installed collector reported all six drive letters after the restart. Disk history graphs remain a separate idea.
 - **Changed timer progress to fill left to right and added a repeat-chime setting.** Updated `src/timer.ts`, `src/bar.tsx`, `src/clock-panel.tsx`, and `src/clock.css` for elapsed progress. Added the setting to `src/clock-settings.tsx`, `src/settings-panel.tsx`, `src/settings.ts`, and `native/settings.rs`. `native/timer.rs` and `native/main.rs` use the existing collector tick for repeats and stop on dismissal or when repeat is turned off. Deployed the rebuilt pack and collector.
   - Browser checks covered elapsed fill and the saved setting. An isolated collector verified repeat scheduling, dismissal, one-shot mode, and restoration across restart with sound commands recorded in a log. Audible playback on the desktop remains open.
 - **Added and deployed the clock, calendar, and timer.** `clock.html`, `src/clock-panel.tsx`, `src/clock-settings.tsx`, `src/clock.ts`, `src/timer.ts` and `src/clock.css` implement the UI. Integrated it into the bar, shared Settings, `activity-panel.ts`, `metrics-feed.ts`, `vite.config.ts` and both widget manifests. `native/timer.rs` owns timer persistence and the Windows chime. `native/main.rs`, `native/settings.rs` and `native/state_file.rs` wire it into the existing collector and settings file.

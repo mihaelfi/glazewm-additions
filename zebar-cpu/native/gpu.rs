@@ -2,7 +2,7 @@
 //! names and memory sizes, the "GPU Engine" / "GPU Adapter Memory" performance
 //! counters for load and memory use, and D3DKMT perf data for temperature.
 
-use std::{collections::HashMap, ptr, slice, time::Instant};
+use std::{collections::HashMap, ptr, time::Instant};
 
 use serde::Serialize;
 use windows::{
@@ -18,21 +18,17 @@ use windows::{
             CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
             TH32CS_SNAPPROCESS,
         },
-        System::Performance::{
-            PDH_FMT, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_FMT_LARGE, PDH_HCOUNTER,
-            PDH_HQUERY, PDH_MORE_DATA, PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData,
-            PdhGetFormattedCounterArrayW, PdhOpenQueryW,
-        },
+        System::Performance::{PDH_FMT_DOUBLE, PDH_FMT_LARGE, PDH_HCOUNTER},
     },
-    core::{PCWSTR, w},
+    core::w,
 };
+
+use crate::pdh::{Query, for_each_value};
 
 /// Engine groups shown in the panel, in display order.
 pub const ENGINE_GROUPS: [&str; 5] = ["3D", "Copy", "Video Decode", "Video Encode", "Compute"];
 const PROCESS_LIMIT: usize = 10;
 const MICROSOFT_VENDOR: u32 = 0x1414;
-const PDH_CSTATUS_VALID_DATA: u32 = 0;
-const PDH_CSTATUS_NEW_DATA: u32 = 1;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,30 +79,6 @@ pub struct GpuSampler {
     process_load: HashMap<(usize, u32), f64>,
     process_cache: Vec<GpuProcess>,
     buffer: Vec<u64>,
-}
-
-struct Query(PDH_HQUERY);
-
-impl Query {
-    fn open() -> Option<Self> {
-        let mut handle = PDH_HQUERY::default();
-        (unsafe { PdhOpenQueryW(PCWSTR::null(), 0, &mut handle) } == 0).then_some(Self(handle))
-    }
-
-    fn add(&self, path: PCWSTR) -> Option<PDH_HCOUNTER> {
-        let mut counter = PDH_HCOUNTER::default();
-        (unsafe { PdhAddEnglishCounterW(self.0, path, 0, &mut counter) } == 0).then_some(counter)
-    }
-
-    fn collect(&self) -> bool {
-        unsafe { PdhCollectQueryData(self.0) == 0 }
-    }
-}
-
-impl Drop for Query {
-    fn drop(&mut self) {
-        unsafe { PdhCloseQuery(self.0) };
-    }
 }
 
 impl GpuSampler {
@@ -422,44 +394,4 @@ fn engine_group(engine_type: &str) -> Option<usize> {
 
 fn percent(value: f64) -> u8 {
     value.round().clamp(0.0, 100.0) as u8
-}
-
-/// Reads every instance of a wildcard counter. `buffer` is reused between calls.
-fn for_each_value(
-    counter: PDH_HCOUNTER,
-    format: PDH_FMT,
-    buffer: &mut Vec<u64>,
-    mut visit: impl FnMut(&str, &windows::Win32::System::Performance::PDH_FMT_COUNTERVALUE),
-) {
-    for _ in 0..3 {
-        let mut size = (buffer.len() * size_of::<u64>()) as u32;
-        let mut count = 0;
-        let items = buffer.as_mut_ptr().cast::<PDH_FMT_COUNTERVALUE_ITEM_W>();
-        let status = unsafe {
-            PdhGetFormattedCounterArrayW(
-                counter,
-                format,
-                &mut size,
-                &mut count,
-                (!buffer.is_empty()).then_some(items),
-            )
-        };
-        if status == PDH_MORE_DATA {
-            buffer.resize((size as usize).div_ceil(size_of::<u64>()) + 64, 0);
-            continue;
-        }
-        if status != 0 {
-            return;
-        }
-        let items = unsafe { slice::from_raw_parts(items, count as usize) };
-        for item in items {
-            let status = item.FmtValue.CStatus;
-            if status != PDH_CSTATUS_VALID_DATA && status != PDH_CSTATUS_NEW_DATA {
-                continue;
-            }
-            let Ok(name) = (unsafe { item.szName.to_string() }) else { continue };
-            visit(&name, &item.FmtValue);
-        }
-        return;
-    }
 }

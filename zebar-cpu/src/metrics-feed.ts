@@ -28,6 +28,8 @@ export interface GpuSample {
   temperature?: number;
 }
 
+export type DriveRates = Partial<Record<string, { read: number | null; write: number | null }>>;
+
 export interface MetricsSample {
   sequence: number;
   total: number;
@@ -46,6 +48,7 @@ interface MetricsHistory {
   settingsVersion?: number;
   timer?: Timer | null;
   gpus?: GpuAdapter[];
+  driveRates?: DriveRates;
   samples: MetricsSample[];
 }
 
@@ -72,6 +75,7 @@ export function useMetricsFeed(
   const [samples, setSamples] = createSignal<MetricsSample[]>([]);
   const [status, setStatus] = createSignal<FeedStatus>('starting');
   const [gpus, setGpus] = createSignal<GpuAdapter[]>([]);
+  const [driveRates, setDriveRates] = createSignal<DriveRates>();
   const [settingsVersion, setSettingsVersion] = createSignal<number>();
   const [activeTimer, setActiveTimer] = createSignal<Timer | null>(null, {
     equals: (previous, next) => previous?.deadlineMs === next?.deadlineMs
@@ -109,6 +113,7 @@ export function useMetricsFeed(
       if (newest) {
         lastSequence = newest.sequence;
         lastSampleAt = performance.now();
+        setDriveRates(history.driveRates);
         setStatus('live');
       } else if (lastSampleAt === 0 || performance.now() - lastSampleAt > 3000) {
         setStatus(lastSampleAt === 0 ? 'starting' : 'unavailable');
@@ -146,5 +151,12 @@ export function useMetricsFeed(
     window.clearTimeout(timer);
   });
 
-  return { samples, status, gpus, settingsVersion, activeTimer };
+  return {
+    samples,
+    status,
+    gpus,
+    settingsVersion,
+    activeTimer,
+    driveRates: () => status() === 'live' ? driveRates() : undefined,
+  };
 }

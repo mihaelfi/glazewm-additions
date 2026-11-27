@@ -2,6 +2,8 @@ import { createSignal, onMount } from 'solid-js';
 import { DEFAULT_CLOCK_FORMAT, validClockFormat } from './clock';
 import { requestMetrics } from './metrics-feed';
 
+export type DriveActivityMode = 'none' | 'marks' | 'rates';
+
 /**
  * Widget settings. The collector keeps them in `settings.json` in the widget
  * pack folder (see `native/settings.rs`), so every bar and popup shares one copy.
@@ -12,6 +14,8 @@ export interface Settings {
   bar: { storage: boolean; ram: boolean; cpu: boolean; gpu: boolean };
   /** Drive letters to show. `null` shows every drive, including ones added later. */
   drives: string[] | null;
+  /** Activity shown on the bar. Missing letters show capacity only. */
+  driveActivity: Partial<Record<string, DriveActivityMode>>;
   /** Name of the GPU the bar follows. `null` picks the one with the most video memory. */
   gpuAdapter: string | null;
   clockFormat: string;
@@ -26,6 +30,7 @@ export const DEFAULT_SETTINGS: Settings = {
   historyMinutes: 1,
   bar: { storage: true, ram: true, cpu: true, gpu: true },
   drives: null,
+  driveActivity: {},
   gpuAdapter: null,
   clockFormat: DEFAULT_CLOCK_FORMAT,
   repeatTimerChime: true,
@@ -42,6 +47,9 @@ export const formatWindow = (seconds: number) =>
 
 export const showsDrive = (settings: Settings, letter: string) =>
   settings.drives === null || settings.drives.includes(letter);
+
+export const driveActivityMode = (settings: Settings, letter: string): DriveActivityMode =>
+  settings.driveActivity[letter] ?? 'none';
 
 /** Index of the GPU the bar follows in the collector's adapter list. */
 export function gpuIndex(settings: Settings, adapters: { name: string }[]) {
