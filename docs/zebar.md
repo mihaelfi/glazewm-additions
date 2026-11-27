@@ -1,0 +1,226 @@
+# Zebar: the `cpu-activity` widget pack
+
+Read this when you work on the bar or any popup (CPU, RAM, GPU, storage, clock, settings).
+If the change also touches the Rust collector (`zebar-cpu/native/`), read
+[`zebar-collector.md`](zebar-collector.md) too. Ideas and bugs are in [`backlog.md`](backlog.md).
+
+Source: `C:\codex\glazewm\zebar-cpu\` (Solid + TypeScript + Vite). Installed: `%USERPROFILE%\.glzr\zebar\cpu-activity\`.
+
+`%USERPROFILE%\.glzr\zebar\settings.json` startup changed from `glzr-io.starter` / `with-glazewm` to
+pack `cpu-activity`, widget `bar`, preset `default` (backup: `settings.before-cpu-activity-20261127-111335.json`).
+
+## Widgets (`zpack.json`)
+
+| Widget | HTML | Window | Purpose |
+|---|---|---|---|
+| `bar` | `dist/bar.html` | 100% × 44px, top-left, all monitors, `zOrder: normal` | The status bar |
+| `cpu-activity` | `dist/panel.html` | 576 × 780, top-right, `top_most`, focused | CPU details pop-up |
+| `ram-activity` | `dist/ram.html` | 576 × 620, top-right, `top_most`, focused | RAM details pop-up |
+| `gpu-activity` | `dist/gpu.html` | 576 × 700, top-right, `top_most`, focused | GPU details pop-up |
+| `settings` | `dist/settings.html` | 576 × 660, top-right, `top_most`, focused | Settings pop-up, opened from the gear in any popup |
+| `storage-activity` | `dist/storage.html` | 576 × 470, top-right, `top_most`, focused | Storage details pop-up; may launch `explorer.exe` with a drive root |
+| `clock` | `dist/clock.html` | 384 × 492, top-right, `top_most`, focused | Month calendar and persistent timer |
+
+The bar opens the panels with `startWidget` on the bar's own monitor
+(`src/activity-panel.ts`, offset −12px / 50px, size clamped to the monitor). The
+heights in code come from `panelHeights` in `activity-panel.ts`, not from the zpack
+presets, so change both together. A panel closes on Esc, on blur, with its × button,
+or when its bar button is clicked again.
+
+**Toggle behaviour** (`usePanelToggle` / `useCloseActivityPanel` in `activity-panel.ts`):
+- The bar and its panels share an origin, so they talk over a `BroadcastChannel('cpu-activity-panels')`.
+  A panel posts `closed` when it closes; the bar posts `close` to ask one to close.
+- Pressing the mouse on the bar takes focus from the panel, which closes it on blur
+  *before* the click arrives. So the bar reads the state on `pointerdown`, and a panel
+  that closed in the last 600 ms counts as open: the click then does not reopen it.
+- Clicking a different metric while a panel is open opens the new one, and the old one closes on blur.
+- Each bar tracks only the panels it opened itself, so with one bar per monitor, a click on the other monitor's bar still opens a panel there.
+
+The bar's `privileges.shellCommands` allows exactly one program, the collector exe, with no
+arguments. **The installed `zpack.json` uses the absolute path**
+`C:\Users\mihae\.glzr\zebar\cpu-activity\zebar-cpu-collector.exe`, **while the source
+`zebar-cpu/zpack.json` has the bare name `zebar-cpu-collector.exe`.** Keep the absolute
+path when you deploy (or check that the relative one works first).
+
+**Lesson from the storage popup:** in popups, guard every value that comes from a provider
+(with `<Show>`) until its first output arrives. A render that throws leaves the transparent window blank.
+
+## Bar layout (`src/bar.tsx`)
+
+Left: a brand mark (four dots), then the workspace buttons. Right, in order (fixed by the "widget reorder" change):
+paused indicator and binding-mode buttons (shown only when active) → Wi-Fi SSID → battery →
+**storage card** → **RAM** (sparkline + % ) → **CPU** (heatmap + %) → **GPU** (green sparkline + %) → tiling-direction toggle (↔/↕) →
+weather (°C) → input language → clock (default `yyyy-MM-dd HH:mm`).
+
+- **Input language** is shortened to the first part of the layout code, in upper case (e.g. `en-US` → `EN`).
+- Clicking a workspace runs `focus --workspace <name>`. Clicking the tiling toggle runs `toggle-tiling-direction`.
+- **GlazeWM command strings: never quote arguments** (see PROJECT_STATE). The bar used `JSON.stringify` here until 2026-11-27, which broke workspace clicks and the binding-mode button.
+- Theme: dark navy bar `#151b30`, accent `#b6acff`; CPU in purple tones, RAM in teal, GPU in green (`src/widget.css`, `src/history-graph.tsx`). Compact graphs use the `.sparkline` class.
+
+## Workspace app icons
+
+- Each workspace button shows its number and then one icon per distinct app in that workspace, sorted by name.
+- `src/workspace-apps.ts` maps process names to Nerd Font glyph classes (`knownApps`):
+  ChatGPT, Claude, Discord, Docker Desktop, Explorer, Firefox, FxSound, Chrome, Jellyfin, Edge,
+  Excel, Outlook (`outlook`/`olk`), PowerPoint, Word, Notepad, PyCharm, ShareX, Signal, Spotify,
+  Steam, VS Code, Windows Terminal.
+- An unknown app gets two-letter initials in a small pill instead.
+- Live updates: it runs its own `WmClient` and subscribes to window, workspace, monitor
+  and pause events, waiting 50 ms to batch bursts, then calls `queryWorkspaces`. If that
+  connection drops it falls back to the Zebar glazewm provider's data.
+- The icons come from `src/workspace-icons.woff2`, a **subset** of the Nerd Fonts 3.5.1
+  webfont (licence in `public/workspace-icons-LICENSE.txt`), with codepoints set in
+  `src/workspace-icons.css`. **To add an app you need three things: an entry in
+  `knownApps`, a CSS rule with its codepoint, and the glyph in the subset font.** An
+  existing glyph can be reused without touching the font.
+
+## CPU, RAM and GPU (front end)
+
+Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) for endpoints and sampling.
+
+- **Feed** (`src/metrics-feed.ts`): polls once a second with POST, because Zebar's
+  service worker caches cross-origin GETs. If the poll fails, the bar spawns the collector
+  through `shellSpawn`, at most once every 6 s. Status is `starting` → `live` → `unavailable`, and the UI shows `—` when not live.
+- **Bar**: the RAM button has a compact teal `HistoryGraph` sparkline; the CPU button has
+  a `Heatmap` canvas (one row per logical CPU, blue→red). The GPU button is a green sparkline of the
+  selected adapter's load plus %; its tooltip shows the GPU name and temperature. It is hidden if the collector reports no GPUs.
+- **CPU panel** (`src/panel.tsx`): total, busiest core, an all-core heatmap with a colour
+  key, a graph of the selected core over the history window with its peak, a clickable grid of logical processors,
+  and **Top processes · last N min** (N = the history setting): Process, PID, **Now**, **Avg** and **Peak**, top 8. It's
+  sorted by Avg by default; click a column header to re-sort. It refreshes every 2 s while open. The
+  point is that a process that spiked for 30 s and then stopped still ranks high on Avg and Peak.
+- **RAM panel** (`src/ram-panel.tsx`): usage %, a history graph, used/available/total
+  in GiB/MiB, and the top 10 processes by memory.
+- **GPU panel** (`src/gpu-panel.tsx`): adapter tabs (when there's more than one GPU), then load, dedicated memory (used / total with a meter), shared memory and temperature. Below that, a graph for the selected engine (Overall by default) with its peak, a clickable engine row, and the top 8 processes (GPU % and dedicated memory).
+- **History length:** widgets ask for just their window with `/history?…&limit=<seconds>` and `/cpu/processes?window=<seconds>`. When the
+  window grows, the feed refetches the whole window (`session = 0`). The heatmap merges long windows into
+  at most 120 columns, keeping each column's **peak**, so short spikes stay visible.
+
+## Storage card and popup (`src/drives.tsx`, `src/storage-panel.tsx`)
+
+- **Bar card**: one framed card, like RAM/CPU/GPU, with a mini bar chart: one small
+  vertical bar per drive, filled to its **used** %, with the letter underneath. It has **no
+  text label** (decided 2026-11-27): you can see the state at a glance, and the details are in the popup.
+  The hover tooltip lists `X: N free of M (P% used)` for every drive. Clicking toggles the popup.
+- **Storage popup** (`storage-activity`, 576 × 470): total free and total capacity,
+  the fullest drive, and one row per drive (letter badge, volume label, file system,
+  "N free of M", a horizontal used bar, used %). **Clicking a row opens that drive in File
+  Explorer** and closes the popup.
+- **History of this design:** the first version (2026-11-27) put six loose `C | 947 GB` items on the bar.
+  It looked out of place next to the framed cards, the thin bar read like a text cursor, and it was
+  the widest group on the bar. It was replaced with the card and popup above.
+- **Units:** binary, with GB/TB labels to match Explorer. Below 10 GB one decimal, below
+  1 TB whole GB, from 1 TB up TB with one decimal (`formatDriveSize`).
+- **Colours:** blue normally, amber at ≥ 85% used, red at ≥ 95% used, on the card bars, the row bars and the letters.
+- **Data:** Zebar's built-in `disk` provider with `refreshInterval: 60000` (`useDrives()`). It's used
+  in both the bar and the popup and doesn't touch the collector, because free space changes slowly.
+- **Opening Explorer:** the popup calls `shellSpawn('C:\Windows\explorer.exe', ['D:\'])`. The
+  widget's zpack privilege allows only that program with `argsRegex` `^[A-Z]:\\$` (JSON: `"^[A-Z]:\\\\$"`) (one drive
+  root). Checked: the `explorer.exe` that Zebar starts hands off to Windows' COM Explorer
+  factory (`explorer.exe /factory,… -Embedding`, parent svchost) and exits. So unlike the
+  collector, it does **not** keep a copy of Zebar's port, and Zebar restarted cleanly with a
+  drive window open.
+- This PC: C 3.6 TB, D 1.8 TB, E 3.6 TB, F 16 TB (external), G 7.3 TB (98% used, shows red), H 7.3 TB.
+
+## Clock, calendar and timer (`src/clock-panel.tsx`, `src/clock.ts`, `src/timer.ts`; collector side in `native/timer.rs`)
+
+- The far-right clock button opens on the bar's monitor with Calendar selected. The popup shows local time with seconds, a locale-aware month grid with Today and month navigation, a Timer tab, and a link to shared Settings.
+- Timer offers immediate 5, 10 and 15 minute presets and a custom duration in hours/minutes (up to 999 h 59 min). There is one active timer across all bars. The digits count down while the progress line fills from left to right as time elapses. Cancel from the Timer tab.
+- At expiry, the clock briefly pulses when motion is enabled and the elapsed line turns amber. The collector plays a Windows chime about every four seconds until dismissal. Turn off **Repeat timer chime until dismissed** in shared Settings under **Clock** for a single chime. Click a clock button or Dismiss timer in the Timer tab to silence and clear it.
+- `/history` carries timer state to each bar on its existing feed. The open popup reads `/timer` once and listens for actions over a BroadcastChannel. The display uses Zebar's date provider for ticks and does not send per-second timer requests. Persistence is described in the collector doc.
+
+## Settings (`src/settings.ts`, `src/settings-panel.tsx`; storage in `native/settings.rs`)
+
+- **Why our own popup:** Zebar 3.3.1's pack editor (Settings → Custom packs → pack) can't hold
+  custom options. A widget's config is only placement presets, privileges and caching (`WidgetConfig` in
+  `node_modules/zebar/dist/index.d.ts`).
+- **Opening it:** the gear button in the shared popup header (`src/panel-header.tsx`). The popup you came from closes on blur. Settings closes on Esc, on blur or with ×.
+- **Options** (all detected at runtime, nothing specific to this PC):
+
+  | Setting | Values | Default | Effect |
+  |---|---|---|---|
+  | `clockFormat` | Luxon format preset or custom string | `yyyy-MM-dd HH:mm` | Date and time on the bar. Settings includes a live preview and a syntax tooltip |
+  | `repeatTimerChime` | boolean | `true` | Repeat the expiry chime until dismissal. Off plays it once |
+  | `historyMinutes` | 1, 5, 10, 15 | 1 | Window for every graph, heatmap, "N ago" label and the CPU process Avg/Peak |
+  | `bar.storage/ram/cpu/gpu` | booleans | all `true` | Which cards the bar shows. At least one must stay, because the cards are the only way into the popups (enforced in the UI and the collector) |
+  | `drives` | letters or `null` | `null` = all | Drives in the storage card **and** popup. Selecting every drive saves `null`, so drives added later show up |
+  | `gpuAdapter` | adapter name or `null` | `null` = most video memory | GPU the bar's GPU card follows. The GPU popup also opens on that tab |
+
+- **Live updates:** every `/history` response carries `settingsVersion`. The bar passes it to
+  `useSettings().sync`, which refetches when it changes, so changes apply within about 1 s. Popups fetch settings
+  once when they open.
+
+## Build and deploy
+
+The repo has no deploy script. These steps were worked out from the files present:
+
+```powershell
+cd C:\codex\glazewm\zebar-cpu
+npm install --cache .npm-cache      # once; earlier runs used this cache flag
+npm run build                       # tsc --noEmit && vite build -> dist/
+cargo build --release --offline     # -> target\release\zebar-cpu-collector.exe (crates are in the local cache)
+```
+
+Then **replace** the installed `dist\` as a whole: move the old one aside as
+`dist.before-<change>-<timestamp>` and copy the new `dist\` in, so all widget HTML files and
+their assets stay in step. Copy `target\release\zebar-cpu-collector.exe` only if it changed
+(see the collector doc: stop it and copy in a retry loop).
+Keep the installed `zpack.json` (see the absolute-path note above); when you add a
+widget, add it to both the installed and the source `zpack.json`. The panels load fresh each time they open. The bar
+and any `zpack.json` change need a Zebar restart:
+
+```powershell
+Stop-Process -Name zebar -Force; Start-Sleep -Seconds 3; Start-Process zebar
+```
+
+**If the bar is ever a grey strip after a restart**, Zebar couldn't start its widget server
+on `127.0.0.1:6124`. Check which PID owns it with
+`netstat -ano | findstr "LISTENING" | findstr "127.0.0.1:6124"`. The known cause (the collector
+inheriting the socket) was fixed on 2026-11-27, and a restart with the collector still running was
+checked afterwards. If it comes back, look for another child process of Zebar holding the port.
+
+**Testing note:** while driving the desktop with computer-use, popups sometimes close between steps because the tool
+changes window focus, and the popups close on blur. A focus log confirmed that a real click inside a popup keeps focus.
+Don't mistake this for a widget bug. The native desktop tool does not expose the Zebar bar windows.
+
+## Known issues and unverified
+
+- Check native clock popup placement and dismissal on both monitors, and listen for the chime on the desktop.
+- **Not yet portable:** the installed `zpack.json` uses the absolute collector path `C:\Users\mihae\...`. To share the pack, check whether Zebar accepts a path relative to the pack.
+- The panel toggle has only been tested with the bar on the primary monitor. The other monitor's bar should behave the same way (each bar tracks its own panels), but that hasn't been checked.
+
+## Backups
+
+- `.glzr\zebar\settings.before-cpu-activity-20261127-111335.json`: starter-pack Zebar settings
+- `.glzr\zebar\cpu-activity\backup-before-gpu-20261127-124849\`: installed `dist\`, `zpack.json` and collector exe from before the GPU widget and toggle
+- `.glzr\zebar\cpu-activity\bar.before-workspace-icons-20261127-111836.html`, `bar.before-widget-reorder-20261127-114545.html`, `bar.before-short-language-labels-20261127-120006.html`
+- `zpack.before-storage-*.json`, `zpack.before-settings-*.json`, `zebar-cpu-collector.before-cpu-processes.exe`, `zebar-cpu-collector.before-settings.exe` (in the pack folder)
+- `.glzr\zebar\cpu-activity\dist.before-clock-20261127-154825\`, `zpack.json.before-clock-20261127-154825`, `zebar-cpu-collector.exe.before-clock-20261127-154825`: installed pack before the clock and timer
+- `.glzr\zebar\cpu-activity\dist.before-timer-repeat-20261127-155842\`, `zebar-cpu-collector.exe.before-timer-repeat-20261127-155842`: installed assets and collector before elapsed progress and the repeating chime
+
+## Change log
+
+Newest first. Covers the whole pack, front end and collector.
+
+### 2026-11-27
+- **Changed timer progress to fill left to right and added a repeat-chime setting.** Updated `src/timer.ts`, `src/bar.tsx`, `src/clock-panel.tsx`, and `src/clock.css` for elapsed progress. Added the setting to `src/clock-settings.tsx`, `src/settings-panel.tsx`, `src/settings.ts`, and `native/settings.rs`. `native/timer.rs` and `native/main.rs` use the existing collector tick for repeats and stop on dismissal or when repeat is turned off. Deployed the rebuilt pack and collector.
+  - Browser checks covered elapsed fill and the saved setting. An isolated collector verified repeat scheduling, dismissal, one-shot mode, and restoration across restart with sound commands recorded in a log. Audible playback on the desktop remains open.
+- **Added and deployed the clock, calendar, and timer.** `clock.html`, `src/clock-panel.tsx`, `src/clock-settings.tsx`, `src/clock.ts`, `src/timer.ts` and `src/clock.css` implement the UI. Integrated it into the bar, shared Settings, `activity-panel.ts`, `metrics-feed.ts`, `vite.config.ts` and both widget manifests. `native/timer.rs` owns timer persistence and the Windows chime. `native/main.rs`, `native/settings.rs` and `native/state_file.rs` wire it into the existing collector and settings file.
+  - Verified the UI and collector builds and live settings and metrics after restarting Zebar. Browser-tested the rendered calendar, month navigation, timer presets, countdown and overdue dismissal, popup links, format preview, and syntax tooltip. An isolated collector test covered settings migration, 25-hour timer restore, expiry during downtime, one alarm across restarts, and durable dismissal. Native window placement and audible playback remain open.
+- **Added a Settings popup**: history window, bar items, drives, GPU for the bar.
+  - New files: `native/settings.rs`, `src/settings.ts`, `src/settings-panel.tsx`, `src/panel-header.tsx`, `settings.html`.
+  - Changed: `main.rs` (`/settings`, `/settings/save`, `limit` and `window` parameters, 15 min history), `processes.rs` (`cpu_summary(window)`), `metrics-feed.ts` (history-length accessor, `settingsVersion`), `heatmap.tsx` and `history-graph.tsx` (`length` prop, peak-merged columns), `bar.tsx`, all four popups, `activity-panel.ts` (exported `openActivityPanel`, `settings: 660`), `widget.css`, `vite.config.ts`, and both zpacks (new `settings` widget).
+  - Checked on screen: the gear opens Settings; choosing 5 min saved `settings.json` and switched the bar graphs live; unticking GPU hid the GPU card; unticking G: removed it from the storage card. Also checked bad JSON → 400 and a foreign Origin → 403. **Afterwards the settings were set back to the defaults** (1 min, everything shown).
+- **CPU popup: top processes with Now / Avg / Peak.** The collector got a new `native/processes.rs` (a single `NtQuerySystemInformation` call per second, which also replaced sysinfo's per-process memory refresh), a `/cpu/processes` endpoint and the `Wdk_System_SystemInformation` feature. `src/panel.tsx` got a sortable table. The popup is now 780 px tall in `activity-panel.ts` and both zpacks.
+  - Checked: the memory list matches `Get-Process` exactly, the CPU table renders and re-sorts on screen, and the toggle still works. The collector costs 0.7% of one core.
+- **Replaced the loose drive indicators with a storage card and popup**, matching CPU/RAM/GPU. Files: `src/drives.tsx` (now `useDrives`, `DriveBars`, helpers), new `src/storage-panel.tsx` and `storage.html`, `bar.tsx`, `activity-panel.ts` (`panelHeights`), `widget.css`, `vite.config.ts`, and both `zpack.json` files (new widget with the Explorer privilege).
+  - First deploy bug: the popup rendered blank because the "Fullest" cell read a drive before the provider had sent any data. Guarded with `<Show>`.
+  - Checked on screen: the card renders, the popup opens and closes from the card, and clicking a row opens Explorer. Zebar also restarted cleanly while that Explorer window was open.
+- Added **drive free-space indicators** to the bar (`src/drives.tsx`), left of RAM, using Zebar's `disk` provider refreshed every 60 s. (Replaced by the storage card the same day.)
+- **Fixed workspace clicks on the bar.** `bar.tsx` sent `focus --workspace "12"` (quoted with `JSON.stringify`). Names are now passed bare, and the binding-mode button got the same fix. Checked: clicking 19 switched to it.
+- **Fixed the grey bar after Zebar restarts.** The collector inherited Zebar's port-6124 socket and kept it after Zebar exited. The collector now relaunches itself with `--detached` and no inherited handles (`relaunch_detached` in `native/main.rs`, new `Win32_System_Threading` feature). Checked: killing Zebar while the collector kept running freed the port, and the restarted Zebar served normally.
+- Added a **GPU widget**: a bar sparkline and a `gpu-activity` detail panel, plus GPU sampling in the collector (`native/gpu.rs`, new `windows` crate dependency, `/gpu/processes` endpoint, `--probe` flag). New files: `src/gpu-panel.tsx`, `gpu.html`. Changed: `metrics-feed.ts`, `history-graph.tsx` (`gpu` tone, `.sparkline` class), `bar.tsx`, `widget.css`, `vite.config.ts`, and both `zpack.json` files.
+- **Bar buttons now toggle their panels**: a second click closes the panel instead of reopening it (`activity-panel.ts`, BroadcastChannel and a check on pointerdown). Checked on screen for GPU, CPU and RAM, including switching between panels.
+- Redeployed the full widget build. Before this, the installed `panel.html`/`ram.html` still loaded the 11:37 build and old assets were piling up. The installed `dist\` now matched `zebar-cpu\dist\` exactly. Its `dist.before-full-redeploy-*` backup was deleted later that day, when the GPU widget was deployed.
+- Shortened input-language labels (`EN`), reordered the right side of the bar, and added app icons to the workspace buttons (Nerd Font subset).
+- Built the `cpu-activity` pack (bar + CPU panel + RAM panel + Rust collector) and made it the startup widget instead of the starter pack.
