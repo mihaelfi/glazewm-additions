@@ -185,6 +185,18 @@ public sealed class GlazeClient
     public Task<JsonElement> RunCommand(string command, string? subjectId = null) =>
         SendAsync(subjectId is null ? $"command {command}" : $"command --id {subjectId} {command}");
 
+    /// <summary>The window's state type as GlazeWM sees it ("tiling", "floating", "minimized", ...), or null.</summary>
+    public async Task<string?> WindowStateAsync(string windowId)
+    {
+        var data = await SendAsync("query windows");
+        foreach (var w in data.GetProperty("windows").EnumerateArray())
+        {
+            if (w.GetProperty("id").GetString() != windowId) continue;
+            return w.TryGetProperty("state", out var s) && s.TryGetProperty("type", out var t) ? t.GetString() : null;
+        }
+        return null;
+    }
+
     public async Task<WmSnapshot> RefreshAsync()
     {
         var data = await SendAsync("query monitors");

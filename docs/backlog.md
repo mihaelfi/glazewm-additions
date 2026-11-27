@@ -64,7 +64,7 @@ with providers and actions around it.
 
 ### New result sources (providers)
 
-- **Go to workspace** · `ready` · S. A query that is only `@19` (or `@3`, using the usual one-digit rule) switches to that workspace, with no app selected.
+- **Go to workspace** · `done` 2026-11-27. A query that is only `@19` (or `@3`, using the usual one-digit rule) shows "Go to workspace N" on top; Enter switches.
 - **GlazeWM cheat sheet** · `idea` · M. Read the keybindings from the live `config.yaml` (reload when the file
   changes) and make them searchable: type "move window" or "alt+shift" and see the key and what it does. Open
   questions: a prefix (`?` or `keys`) or mixed into normal results; whether Enter runs the command.
@@ -94,9 +94,8 @@ with providers and actions around it.
 
 ### Launcher bugs
 
-- **Minimized window isn't restored** · `bug` · S. Picking a minimized window (seen with Signal) switches to its workspace but
-  leaves it minimized, so the workspace looks empty. Likely cause: `GlazeClient.cs` doesn't read the window's state, and the focus
-  path in `Actions.cs` never restores it. Fix: restore before focusing.
+- **Minimized window isn't restored** · `done` 2026-11-27. The focus path now restores it after switching workspace and waits for
+  GlazeWM to see the restore. Not yet checked with a minimized floating window.
 - **Minimized apps sometimes missing from results** · `bug` · S–M, needs a repro. First check which apps: apps that "minimize"
   to the tray (Signal, Discord and others can) hide their window instead, and GlazeWM drops hidden windows from its tree, so the
   launcher never sees them. If that's the cause, the fix is in the app result (Enter on the app usually brings its window back) rather than the window list.

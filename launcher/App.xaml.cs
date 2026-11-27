@@ -83,6 +83,7 @@ public partial class App : Application
                 new BrowserTabSearchProvider(_glaze, identity, actions),
                 new FolderSearchProvider(shellIndex),
                 new CommandSearchProvider(actions),
+                new WorkspaceSearchProvider(actions),
             ],
             _usage);
 

@@ -189,11 +189,13 @@ internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, Usa
         var context = new SearchContext(query, wm, recents);
 
         var results = new List<(ProviderResult Result, double Score)>(64);
+        var pinned = new List<ResultItem>();
         foreach (var provider in providers)
         {
             foreach (var result in provider.Search(context))
             {
-                if (home || result.Match.Found)
+                if (result.Pinned) pinned.Add(result.Item);
+                else if (home || result.Match.Found)
                 {
                     double score = home
                         ? recents.GetValueOrDefault(result.Item.UsageKey)
@@ -212,17 +214,17 @@ internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, Usa
                 .OrderByDescending(entry => OpenPriority(entry.Result.TargetWindow, currentWs))
                 .ThenBy(entry => entry.Result.TargetWindow?.WorkspaceName, StringComparer.Ordinal)
                 .ThenBy(entry => entry.Result.Item.Title, StringComparer.OrdinalIgnoreCase);
-            return recentItems.Concat(openItems).Take(MaxResults).Select(entry => entry.Result.Item).ToList();
+            return pinned.Concat(recentItems.Concat(openItems).Take(MaxResults).Select(entry => entry.Result.Item)).ToList();
         }
 
-        var ranked = results.OrderByDescending(entry => entry.Result.Match.Quality)
+        var ranked = pinned;
+        ranked.AddRange(results.OrderByDescending(entry => entry.Result.Match.Quality)
             .ThenByDescending(entry => OpenPriority(entry.Result.TargetWindow, currentWs))
             .ThenByDescending(entry => entry.Score)
             .ThenBy(entry => entry.Result.Item.Title, StringComparer.OrdinalIgnoreCase)
             .ThenBy(entry => entry.Result.Item.Id, StringComparer.Ordinal)
             .Take(MaxResults)
-            .Select(entry => entry.Result.Item)
-            .ToList();
+            .Select(entry => entry.Result.Item));
         foreach (var item in ranked) item.Highlight(query.Text);
         return ranked;
     }

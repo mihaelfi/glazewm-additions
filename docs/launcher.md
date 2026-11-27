@@ -22,7 +22,8 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
   The matching characters are highlighted in result titles, including non-adjacent fuzzy matches. When a window only matches by process name, the highlight is in its subtitle. The `@N` workspace token is separate from the text match.
 - **Apps:** Enter opens it. If it is already open, Enter focuses its window instead; pressing it again cycles through that app's windows.
   Ctrl+Enter always opens a new window. The badge `● 12 21` shows the workspaces where it's open.
-- **Windows:** Enter switches to the window's workspace if hidden and focuses the selected window. Ctrl+Enter brings it to the current workspace.
+- **Windows:** Enter switches to the window's workspace if hidden and focuses the selected window. A minimized window is restored first, to the state it had before (tiling or floating). Ctrl+Enter brings it to the current workspace.
+- **Go to a workspace:** a query that is only `@N` shows **Go to workspace N** at the top; Enter switches to it. The same one-digit/two-digit rule as below applies. The usual list stays below it, so ↓ still picks a window or app to send there.
 - **Browser tabs:** Search by tab title. A tab result shows the browser and workspace. Enter switches to that workspace and selects the existing tab. Chrome and Edge use Windows UI Automation without an extension or a change to browser settings.
 - **Folders:** Search for Home, Desktop, Downloads, Documents, Pictures, Music, or Videos and press Enter to open the folder in File Explorer. Results show the Windows icon and the current user's registered path, including redirected locations. Used folders can appear in recents.
 - **Send to a workspace:** add `@N` to the query, or press **Ctrl+1…9** on a result. One digit means slot N on the
@@ -35,13 +36,13 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
 | File | Role |
 |---|---|
 | `App.xaml.cs` | Single instance (mutex `Local\GlazeLauncher.Instance`), Alt+Space `RegisterHotKey` (retried every 5 s while another program holds it), named-pipe server `GlazeLauncher`, and the detached relaunch |
-| `GlazeClient.cs` | WebSocket client for GlazeWM IPC `ws://127.0.0.1:6123`: `sub --events …`, `query monitors`, `command [--id X] …`. On any event it re-queries the tree (80 ms debounce) and forwards `window_managed`. `WmWindow` currently keeps id, handle, title, process, workspace and focus, **not the window state** (tiling/floating/minimized) |
+| `GlazeClient.cs` | WebSocket client for GlazeWM IPC `ws://127.0.0.1:6123`: `sub --events …`, `query monitors`, `command [--id X] …`. On any event it re-queries the tree (80 ms debounce) and forwards `window_managed`. `WmWindow` keeps id, handle, title, process, workspace and focus, not the window state; `WindowStateAsync` queries one window's state on demand |
 | `ShellIndex.cs` | Refreshes the app catalog and known folders on the background STA thread. Checks Store package status while indexing apps and re-indexes on open if the index is older than 2 min. |
 | `KnownFolder.cs` | Resolves the standard per-user folder IDs with `SHGetKnownFolderPath` and publishes the folders Windows can resolve |
 | `Search.cs` | Query parsing (`@N`), fuzzy match tiers and character positions, merged ranking, shared result model, `WindowIdentity` |
-| `SearchProviders.cs` | `ISearchProvider` contract and the compiled-in app, window, folder and command providers |
+| `SearchProviders.cs` | `ISearchProvider` contract and the compiled-in app, window, folder, command and go-to-workspace providers. A `Pinned` result is shown above all ranked results |
 | `BrowserTabSearchProvider.cs` | Refreshes the Chrome and Edge tab cache on a background thread using only their accessibility tab strips. Selects a tab by its runtime ID within the original browser window. |
-| `Actions.cs` | Launch / focus / move. Open app and window results share a focus path that runs `focus --workspace N` for hidden workspaces before `focus --container-id`. After an `@N` launch, the next matching `window_managed` window (within 15 s) gets `move --workspace N` and uses the same focus path if following. |
+| `Actions.cs` | Launch / focus / move. Open app and window results share a focus path that runs `focus --workspace N` for hidden workspaces, restores a minimized window (Win32 `SW_RESTORE`, then waits up to 600 ms for GlazeWM to stop reporting it as minimized, because focusing it earlier leaves GlazeWM's focus on the previous window), then runs `focus --container-id`. After an `@N` launch, the next matching `window_managed` window (within 15 s) gets `move --workspace N` and uses the same focus path if following. |
 | `IconCache.cs` | Windows Shell icons (`IShellItemImageFactory`, 48px, alpha kept) loaded on the STA thread. Known folders use `SHGetKnownFolderItem` first, and the cache warms folder icons before app icons at startup. |
 | `UsageStore.cs` | Frecency (half-life 10 days), global and per workspace, saved to `usage.json` |
 | `MainWindow.xaml(.cs)` | UI (bar palette `#151b30` / `#b6acff`, DWM rounded corners), keys, placement |
@@ -85,7 +86,12 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
   hand off to another process (only Notepad silent → ws 23 was tested). Store apps whose process name doesn't match their package
   may need an entry in `PackagedProcessAliases`.
 - Browser tab search depends on the tab controls Chrome and Edge expose through accessibility. Fullscreen and collapsed tab groups have not been checked.
-- Minimized windows: not restored on activation, and sometimes missing from results. Tracked in the backlog.
+- Minimized windows are sometimes missing from results (needs a repro). Tracked in the backlog.
+
+**Testing tip:** a throwaway WinForms window (`[System.Windows.Forms.Application]::Run($form)` from a background PowerShell)
+is a safe target for window tests. To see a `snapshot`, have GlazeWM copy it out of the real `%LOCALAPPDATA%`
+(`command shell-exec --hide-window cmd.exe /c copy /y %LOCALAPPDATA%\GlazeLauncher\snapshot.png <folder>`), because the
+agent's shell only sees its redirected copy.
 
 ## Backups
 
@@ -96,12 +102,22 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
 - `.glzr\launcher\before-known-folders-20261127-161208\`: before the known-folder provider
 - `.glzr\launcher\before-folder-icons-20261127-161907\`: before the Windows folder icon update
 - `.glzr\launcher\before-browser-tabs-20261127-162737\`: before extension-free browser tab search
+- `.glzr\launcher\before-minimized-and-goto-20261127-181846\`: before minimized-window restore and the go-to-workspace result
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-27
+- **Restore minimized windows, and go to a workspace with a bare `@N`.** `Actions.cs` restores a minimized window after switching
+  to its workspace and waits for GlazeWM to see the restore before `focus --container-id` (`Native.cs` adds `IsIconic` and
+  `ShowWindow`; `GlazeClient.cs` adds `WindowStateAsync`). New `WorkspaceSearchProvider` in `SearchProviders.cs`, registered in
+  `App.xaml.cs`, shows "Go to workspace N" when the query is only `@N`; `ProviderResult.Pinned` puts it above ranked results
+  (`Search.cs`). Published and installed.
+  - Checked with a throwaway test window: minimized on ws 23 and picked from ws 22, then from ws 23 itself. Both times it came
+    back tiled, in the foreground, and focused in GlazeWM. Without the wait, Windows showed it but GlazeWM's focus stayed on
+    the previous window. `@19` + Enter switched to ws 19; a snapshot of `@3` on ws 19 showed "Go to workspace 13" on top.
+  - Not checked: a minimized floating window, and an app that minimizes to the tray.
 - **Added extension-free Chrome and Edge tab search.** `BrowserTabSearchProvider.cs` reads only tab titles and IDs from each GlazeWM-managed browser's Windows UI Automation tab strip. `SearchProviders.cs`, `Search.cs`, `App.xaml.cs`, and `MainWindow.xaml.cs` refresh provider data asynchronously on open. `Actions.cs` logs activation failures by usage key. Published and installed the build. Verified inactive tab selection and foreground focus on a hidden workspace in Chrome and in Edge with both horizontal and vertical tabs. Closed the isolated browser test windows and cleaned up their profiles.
 - **Use Windows icons for launcher folders.** `Native.cs` and `IconCache.cs` request each folder's icon by Known Folder ID on the shared background worker, fall back to the resolved folder path, and deliver cached images to all waiting results. `App.xaml.cs`, `SearchProviders.cs`, `Search.cs`, and `MainWindow.xaml.cs` pass the folder ID, warm the icons, and show the generic outline while the Windows image is unavailable. Published and installed the build. Verified distinct Windows icons for Downloads, Documents, Pictures, Desktop, Music, and Videos, and the standard Windows folder icon for Home.
 - **Added current-user folders to launcher search.** `KnownFolder.cs` resolves seven standard Windows folder IDs for the current account. `ShellIndex.cs` (formerly `AppIndex.cs`) caches them alongside the app catalog. `SearchProviders.cs`, `Search.cs`, `App.xaml.cs`, `Actions.cs`, and `MainWindow.xaml.cs` add the folder provider, shell activation, and result handling. Published and installed the build. Checked the Downloads, Documents, and Pictures results and verified that selecting Downloads opened its registered path in File Explorer.

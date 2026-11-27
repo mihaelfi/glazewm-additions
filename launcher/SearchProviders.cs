@@ -6,7 +6,8 @@ internal readonly record struct SearchContext(
     public bool IsHome => Query.Text.Length == 0;
 }
 
-internal readonly record struct ProviderResult(ResultItem Item, TextMatch Match, WmWindow? TargetWindow = null);
+/// <param name="Pinned">Shown above every ranked result, e.g. the action a query asks for directly.</param>
+internal readonly record struct ProviderResult(ResultItem Item, TextMatch Match, WmWindow? TargetWindow = null, bool Pinned = false);
 
 /// <summary>Searches data already in memory. Each result supplies its own activation action.</summary>
 internal interface ISearchProvider
@@ -167,6 +168,34 @@ internal sealed class FolderSearchProvider(ShellIndex index) : ISearchProvider
                 },
             }, match);
         }
+    }
+}
+
+/// <summary>A query that is only "@N" offers to switch to that workspace.</summary>
+internal sealed class WorkspaceSearchProvider(Actions actions) : ISearchProvider
+{
+    public int Priority => 0;
+
+    public IEnumerable<ProviderResult> Search(SearchContext context)
+    {
+        if (!context.IsHome || context.Query.WorkspaceToken is not { } token) yield break;
+
+        // Same rule as "@N" for apps: one digit is a slot on the focused monitor, two are literal.
+        var workspace = context.Wm.ResolveWorkspace(token);
+        var label = context.Wm.LabelFor(workspace);
+        yield return new ProviderResult(new ResultItem
+        {
+            Id = "workspace:goto",
+            Title = $"Go to workspace {label}",
+            Subtitle = context.Wm.Workspaces.Any(ws => ws.Name == workspace && ws.IsDisplayed)
+                ? "GlazeWM · already shown"
+                : "GlazeWM · switch workspace",
+            Glyph = "",
+            UsageKey = "cmd:Go to workspace",
+            FooterText = "↵ go to workspace   ↓ pick a window or app to send there   Esc close",
+            // Enter, Ctrl+1‒9 and a click all arrive with the resolved target workspace.
+            Activate = (options, _) => actions.GoToWorkspace(options.TargetWorkspace ?? workspace),
+        }, default, Pinned: true);
     }
 }
 

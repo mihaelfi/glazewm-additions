@@ -104,6 +104,7 @@ internal sealed class Actions
 
     public async Task FocusWindow(WmWindow w, string? destination = null)
     {
+        var hwnd = new IntPtr(w.Handle);
         if (_glaze.IsConnected)
         {
             var snapshot = _glaze.Snapshot;
@@ -115,10 +116,50 @@ internal sealed class Actions
             if (workspace is not null && !snapshot.Workspaces.Any(ws => ws.Name == workspace && ws.IsDisplayed))
                 await TryCommand($"focus --workspace {workspace}");
 
+            // Focus by ID leaves a minimized window minimized, so the workspace looks empty.
+            // Restore it after the switch, so it reappears on a displayed workspace, and wait until
+            // GlazeWM has seen the restore: focusing a window it still thinks is minimized leaves
+            // GlazeWM's focus on the previous window.
+            if (RestoreIfMinimized(hwnd)) await WaitUntilNotMinimized(w.Id);
+
             if (await TryCommand($"focus --container-id {w.Id}")) return;
         }
-        Native.ForceForeground(new IntPtr(w.Handle));
+        RestoreIfMinimized(hwnd);
+        Native.ForceForeground(hwnd);
     }
+
+    /// <summary>Restores a minimized window. GlazeWM sees the restore and returns the window to
+    /// its state before it was minimized (tiling or floating).</summary>
+    private static bool RestoreIfMinimized(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !Native.IsIconic(hwnd)) return false;
+        Native.ShowWindow(hwnd, Native.SW_RESTORE);
+        Log.Info($"restored minimized window 0x{hwnd:X}");
+        return true;
+    }
+
+    /// <summary>Waits briefly (only after a restore) for GlazeWM to process it.</summary>
+    private async Task WaitUntilNotMinimized(string windowId)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromMilliseconds(600);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                if (await _glaze.WindowStateAsync(windowId) != "minimized") return;
+            }
+            catch (Exception e)
+            {
+                Log.Info($"window state query failed: {e.Message}");
+                return;
+            }
+            await Task.Delay(30);
+        }
+        Log.Info($"GlazeWM still reports window {windowId} as minimized; focusing anyway");
+    }
+
+    /// <summary>Switches to a workspace without touching any window.</summary>
+    public Task GoToWorkspace(string workspace) => TryCommand($"focus --workspace {workspace}");
 
     public async Task RunCommand(LauncherCommand c)
     {
