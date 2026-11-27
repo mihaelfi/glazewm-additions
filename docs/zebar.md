@@ -186,7 +186,7 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 ## Known issues and unverified
 
 - Check native clock popup placement and dismissal on both monitors, and listen for the chime on the desktop.
-- **Not yet portable:** the installed `zpack.json` uses the absolute collector path `C:\Users\mihae\...`. To share the pack, check whether Zebar accepts a path relative to the pack.
+- **Not yet portable:** the installed `zpack.json` uses the absolute collector path `C:\Users\mihae\...`. Zebar matches the program as an exact string, so a relative path can't work; the planned install script writes the real path (see the backlog's install script item).
 - The panel toggle has only been tested with the bar on the primary monitor. The other monitor's bar should behave the same way (each bar tracks its own panels), but that hasn't been checked.
 
 ## Backups

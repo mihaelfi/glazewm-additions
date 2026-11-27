@@ -20,6 +20,21 @@ with providers and actions around it.
   (Tab, → or Ctrl+K, to be decided) opens the list for the selected result, filterable by typing. Providers
   supply actions with a title, an optional shortcut and a callback; the existing Ctrl+Enter, Shift and
   Ctrl+1…9 behaviours become ordinary actions with shortcuts. Most items below depend on this.
+- **Launcher supervisor: come back after a crash** · `idea` · M. Needed once the launcher also owns the workspace keys.
+  Layers, cheapest first:
+  1. In the launcher: catch unhandled exceptions (`AppDomain`, `Dispatcher`, unobserved tasks), log them, and keep running
+     where it's safe. Most .NET "crashes" are these.
+  2. `RegisterApplicationRestart`: Windows restarts the app after a crash or hang, for free. Only after the app has run 60 s,
+     and not immediately, so it's a backstop only.
+  3. A tiny native supervisor (Rust, like the collector, about 1–2 MB). GlazeWM starts it instead of the launcher. It owns the
+     global hotkeys (Alt+Space, Alt+1…9) and forwards each press over the existing pipe. It starts the launcher itself (detached,
+     no inherited handles) and waits on its process handle, so it uses no CPU and restarts the launcher the moment it exits.
+     On a key press it expects a reply within about 300 ms. If the launcher is gone or hung, it kills or starts it and replays
+     the key once the pipe is up, so the press isn't lost. An intentional Quit (exit code 0) isn't restarted until the next
+     key press. Repeated crashes back off instead of looping.
+  The launcher keeps registering its own hotkey when it runs without the supervisor (development, or people who don't want it).
+  Considered, not recommended: binding Alt+Space in GlazeWM to `shell-exec GlazeLauncher.exe --toggle`. It starts a .NET process on every press,
+  which adds noticeable delay, and it only works while GlazeWM runs.
 - **Launcher settings file** · `idea` · S. A `settings.json` in `%LOCALAPPDATA%\GlazeLauncher\` for aliases,
   extra indexed folders and later the hotkey. Needed by aliases and the shortcut folder.
 - **Window backend without GlazeWM** · `idea` · M. The launcher already starts and finds apps without GlazeWM.
@@ -93,8 +108,8 @@ with providers and actions around it.
   has none, so GlazeWM's focused monitor doesn't change; `workspace.ps1` asks GlazeWM. Possible fix: when the foreground window
   isn't one GlazeWM manages (the desktop), use the monitor under the cursor. The launcher's one-digit `@N` uses the same rule and
   should get the same fix.
-- **Speed of Alt+N** · `idea` · S, measure first. Each Alt+N starts a PowerShell process. If it feels slow, move the logic into
-  something already running (the launcher) or a small native helper.
+- **Speed of Alt+N** · `idea`. Each Alt+N starts a PowerShell process. Covered by the workspace manager moving into the launcher
+  (Portability → Any number of monitors).
 
 ## Portability: other screens and a new PC
 
@@ -108,19 +123,39 @@ What already adapts (checked in the code, 2026-11-27):
 
 Items:
 - **Install script for a new PC** · `idea` · M. One script that builds and installs the widget pack, collector and launcher,
-  writes the installed `zpack.json` with this user's collector path, points Zebar's `settings.json` at the pack, and adds the
-  required pieces to the GlazeWM config (keybindings, startup commands, the launcher ignore rule, the workspace script) or offers
-  a full config to start from. Today every step is manual, and the live config isn't in Git at all. Probably keep a template of
-  the GlazeWM config in the repository.
-- **Absolute paths** · `bug` · S. The installed `zpack.json` hard-codes `C:\Users\mihae\…\zebar-cpu-collector.exe`. Check whether
-  Zebar accepts a path relative to the pack; if not, the install script writes the right one. The storage popup's
-  `C:\Windows\explorer.exe` assumes Windows is on C:.
+  points Zebar's `settings.json` at the pack, and adds the required pieces to the GlazeWM config (keybindings, startup commands,
+  the launcher ignore rule) or offers a full config to start from. Today every step is manual, and the live config isn't in Git
+  at all. Probably keep a template of the GlazeWM config in the repository.
+  - **Collector path (the only hard-coded path that matters).** The source `zpack.json` keeps a placeholder for the collector
+    privilege, and the install script writes the real pack path into the installed copy. Nothing changes at runtime.
+    Why: the bar already builds the collector path at runtime from the pack folder (`metrics-feed.ts`), but Zebar 3.3.1
+    compares the requested program with the zpack `program` as an **exact string** (`check_shell_privilege` in Zebar's
+    `shell_state.rs`): no path resolution and no `%VAR%` expansion. A zpack can't express "this pack's folder".
+  - The storage popup's `C:\Windows\explorer.exe` could become a bare `explorer.exe` if Zebar's spawn searches the Windows
+    folder (test first).
+  - Already portable: the GlazeWM config and `workspace.ps1` use `%USERPROFILE%`, and the launcher has no hard-coded paths.
 - **Small and narrow screens** · `verify` · M. Not tested below this PC's monitors. Check: whether the bar's right side overflows
   on a narrow laptop screen (many cards plus workspace icons), and what should drop out first; whether popup content scrolls or
   gets cut off when a popup is clamped shorter than its design height (the CPU popup wants 780px); whether the CPU heatmap stays
   readable with many more logical CPUs (it draws one row per CPU in a short card).
-- **Monitor count** · `idea` · M. The workspace groups (`11`–`19`, `21`–`29`) and `workspace.ps1` support one or two monitors and
-  throw with three. Decide whether to generalise to N groups.
+- **Any number of monitors, adjusted automatically** · `idea` · L. Today the workspace groups (`11`–`19`, `21`–`29`) and
+  `workspace.ps1` support one or two monitors, throw with three, and only re-sync when you press Ctrl+Alt+R.
+  Findings (2026-11-27):
+  - **Zebar already adapts.** It checks the monitor list every 4 s (name, position, size, scale) and reopens every open widget
+    across the current monitors (`listen_changes` in `monitor_state.rs`, `relaunch_all` in `widget_factory.rs`). The bar uses
+    "all monitors", so a new monitor gets a bar within about 4 s. Not yet tested here.
+  - **GlazeWM sends `monitor_added`, `monitor_updated` and `monitor_removed` events**, and each monitor has a `hardwareId` and
+    `deviceName`. So a resident listener can re-sync on its own instead of waiting for Ctrl+Alt+R.
+  Proposal: group *k* is `k1`–`k9`. Group 1 is the Windows primary monitor; the others follow left to right. A resident
+  "workspace manager" subscribes to the monitor events and, on a change, does what Sync does now for N monitors: write the
+  monitor indexes into the config, reload it, and move workspaces that are on the wrong monitor. Alt+N uses the target
+  monitor's group, and picks the monitor under the cursor when the desktop is in front (this fixes the Alt+N bug above).
+  **Decided (2026-11-27): the manager runs inside the launcher**, as its own module with no dependency on the launcher UI, so
+  it could be split out later. The launcher already holds the GlazeWM connection and can take Alt+1…9 itself, which ends the
+  PowerShell start on every key press. Because the workspace keys then depend on the launcher staying up, this goes together
+  with the launcher supervisor (Launcher → Foundations).
+  Open questions: whether the config must declare every group's workspaces up front (test what GlazeWM does with workspaces
+  bound to a monitor that isn't there), and whether a monitor should keep its group by `hardwareId` across docking.
 
 ## Zebar: storage
 
