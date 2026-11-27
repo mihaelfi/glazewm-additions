@@ -153,6 +153,21 @@ Items:
   it could be split out later. The launcher already holds the GlazeWM connection and can take Alt+1…9 itself, which ends the
   PowerShell start on every key press. Because the workspace keys then depend on the launcher staying up, this goes together
   with the launcher supervisor (Launcher → Foundations).
+  **Decided (2026-11-27): workspaces of a monitor that goes away merge into the same slot on the primary monitor.**
+  Seen with "PC screen only": GlazeWM moved 21 and 22 onto the remaining monitor with their names, where Alt+N can't reach
+  them (only `Ctrl+Alt+N`, the launcher's `@2N`, or the mouse). Rule for the manager, for any number of monitors:
+  - After a monitor change, every workspace whose group has no monitor gets its windows moved to slot N of group 1
+    (`22` → `12`, `35` → `15`). Group 1 is always the Windows primary, so this also covers the primary itself going away:
+    the new primary becomes group 1, and its old group merges.
+  - The manager remembers where each merged window came from. When that monitor comes back, windows that are still on the
+    workspace they were merged into go back to their original workspace; windows the user has moved since are left alone.
+  - Moving windows one by one loses the tiling layout of the merged workspace; that's accepted. Better where possible: if
+    the target slot doesn't exist yet, rename the workspace instead, which keeps its layout. GlazeWM can rename with
+    `update-workspace-config --workspace 22 --name 12` (already used by `workspace.ps1` Initialize).
+  - Seen 2026-11-27: before the screen was turned off, the left (non-primary) screen had 11–19 and the right (primary) had
+    21–29, the wrong way round. Nothing re-synced after an earlier display change. After reconnecting, the primary had 1x
+    again. The manager must enforce "primary = group 1" on every monitor change, not only when Ctrl+Alt+R is pressed.
+  - Still to check: how GlazeWM itself places existing workspaces on `monitor_added`, before the manager relies on it.
   Open questions: whether the config must declare every group's workspaces up front (test what GlazeWM does with workspaces
   bound to a monitor that isn't there), and whether a monitor should keep its group by `hardwareId` across docking.
 
