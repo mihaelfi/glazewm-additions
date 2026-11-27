@@ -69,6 +69,12 @@ with providers and actions around it.
   only Chrome and Edge (no Firefox), only windows GlazeWM manages, and fullscreen and collapsed tab groups are unchecked. A browser
   extension plus a native messaging host would add URLs, Firefox, and possibly history and bookmarks, at the cost of installing
   something in each browser. Decide whether that trade is worth it before building.
+- **Clipboard history** · `idea` · M–L. Search past clipboard entries and paste one into the window that was in front.
+  The launcher is already resident, so it can listen for clipboard changes (`AddClipboardFormatListener`) instead of polling.
+  Alternative to weigh first: read Windows' own clipboard history (Win+V, WinRT `Clipboard.GetHistoryItemsAsync`), which
+  needs that history turned on but nothing stored by us. Either way: skip entries that password managers mark as excluded
+  from clipboard history, start with text (images later), and either keep history in memory only or encrypt it on disk.
+  Pasting means setting the clipboard, restoring the previous window and sending Ctrl+V.
 - **Older ideas:** user-defined script commands (JSON), calculator, web search, per-workspace "default apps", a setting for the hotkey. All `idea`.
 
 ### Launcher bugs
@@ -87,9 +93,34 @@ with providers and actions around it.
   has none, so GlazeWM's focused monitor doesn't change; `workspace.ps1` asks GlazeWM. Possible fix: when the foreground window
   isn't one GlazeWM manages (the desktop), use the monitor under the cursor. The launcher's one-digit `@N` uses the same rule and
   should get the same fix.
-- **Unfinished note from the user:** "make sure that the configuration is …" (cut off). Ask what was meant.
 - **Speed of Alt+N** · `idea` · S, measure first. Each Alt+N starts a PowerShell process. If it feels slow, move the logic into
   something already running (the launcher) or a small native helper.
+
+## Portability: other screens and a new PC
+
+The setup should work on other screen sizes, resolutions and scaling, and be installable on a new PC without hand edits.
+
+What already adapts (checked in the code, 2026-11-27):
+- Zebar sizes are logical pixels, so they scale with Windows' display scaling. The bar is 44px tall at 100% and 66px at 150%.
+- Popups are clamped to the monitor they open on (`openActivityPanel` in `src/activity-panel.ts` divides by the scale factor).
+- GlazeWM gaps scale with DPI (`scale_with_dpi: true`), so the 60px top gap keeps fitting the bar.
+- `workspace.ps1` finds the primary and secondary monitors at runtime and rewrites the monitor anchors itself.
+
+Items:
+- **Install script for a new PC** · `idea` · M. One script that builds and installs the widget pack, collector and launcher,
+  writes the installed `zpack.json` with this user's collector path, points Zebar's `settings.json` at the pack, and adds the
+  required pieces to the GlazeWM config (keybindings, startup commands, the launcher ignore rule, the workspace script) or offers
+  a full config to start from. Today every step is manual, and the live config isn't in Git at all. Probably keep a template of
+  the GlazeWM config in the repository.
+- **Absolute paths** · `bug` · S. The installed `zpack.json` hard-codes `C:\Users\mihae\…\zebar-cpu-collector.exe`. Check whether
+  Zebar accepts a path relative to the pack; if not, the install script writes the right one. The storage popup's
+  `C:\Windows\explorer.exe` assumes Windows is on C:.
+- **Small and narrow screens** · `verify` · M. Not tested below this PC's monitors. Check: whether the bar's right side overflows
+  on a narrow laptop screen (many cards plus workspace icons), and what should drop out first; whether popup content scrolls or
+  gets cut off when a popup is clamped shorter than its design height (the CPU popup wants 780px); whether the CPU heatmap stays
+  readable with many more logical CPUs (it draws one row per CPU in a short card).
+- **Monitor count** · `idea` · M. The workspace groups (`11`–`19`, `21`–`29`) and `workspace.ps1` support one or two monitors and
+  throw with three. Decide whether to generalise to N groups.
 
 ## Zebar: storage
 
