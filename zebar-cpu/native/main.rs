@@ -3,6 +3,8 @@
 mod gpu;
 mod processes;
 mod settings;
+mod state_file;
+mod timer;
 
 use std::{
     collections::VecDeque,
@@ -49,6 +51,7 @@ struct History<'a> {
     session: u64,
     #[serde(rename = "settingsVersion")]
     settings_version: u64,
+    timer: Option<timer::Timer>,
     gpus: &'a [gpu::AdapterInfo],
     samples: Vec<&'a Sample>,
 }
@@ -60,6 +63,7 @@ struct State {
     processes: processes::ProcessSampler,
     gpu: Option<gpu::GpuSampler>,
     settings: settings::SettingsStore,
+    timer: timer::TimerStore,
 }
 
 fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -96,14 +100,17 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         ),
         gpu: gpu::GpuSampler::new(),
         settings: settings::SettingsStore::load(),
+        timer: timer::TimerStore::load(),
     };
     let mut sample_at = Instant::now() + SAMPLE_INTERVAL;
     let mut last_client = Instant::now();
     let mut sequence = 0;
+    state.timer.tick(state.settings.settings.repeat_timer_chime);
 
     while last_client.elapsed() < IDLE_TIMEOUT {
         let now = Instant::now();
         if now >= sample_at {
+            state.timer.tick(state.settings.settings.repeat_timer_chime);
             let State { system, history, gpu, processes, .. } = &mut state;
             system.refresh_cpu_usage();
             system.refresh_memory_specifics(MemoryRefreshKind::nothing().with_ram());
@@ -156,6 +163,7 @@ fn serve_metrics(mut request: Request, state: &mut State) -> Result<bool, serde_
     if !matches!(
         path,
         "/history" | "/memory/processes" | "/cpu/processes" | "/gpu/processes" | "/settings" | "/settings/save"
+            | "/timer" | "/timer/start" | "/timer/clear"
     ) {
         let _ = request.respond(Response::empty(404));
         return Ok(false);
@@ -218,11 +226,27 @@ fn serve_metrics(mut request: Request, state: &mut State) -> Result<bool, serde_
             let _ = request.respond(Response::empty(400).with_header(allow_origin));
             return Ok(true);
         };
+        let was_repeating = state.settings.settings.repeat_timer_chime;
         if state.settings.save(new_settings).is_err() {
             let _ = request.respond(Response::empty(500).with_header(allow_origin));
             return Ok(true);
         }
+        let repeat_chime = state.settings.settings.repeat_timer_chime;
+        if was_repeating != repeat_chime {
+            state.timer.tick(repeat_chime);
+        }
         serde_json::to_vec(&state.settings.snapshot())?
+    } else if matches!(path, "/timer" | "/timer/start" | "/timer/clear") {
+        let result = match path {
+            "/timer/start" => state.timer.start(read_parameter("seconds")),
+            "/timer/clear" => state.timer.clear(read_parameter("deadline")),
+            _ => Ok(()),
+        };
+        if let Err(status) = result {
+            let _ = request.respond(Response::empty(status).with_header(allow_origin));
+            return Ok(true);
+        }
+        serde_json::to_vec(&state.timer.active)?
     } else {
         let after = if read_parameter("session") == Some(state.session) {
             read_parameter("after").unwrap_or(0)
@@ -234,6 +258,7 @@ fn serve_metrics(mut request: Request, state: &mut State) -> Result<bool, serde_
         serde_json::to_vec(&History {
             session: state.session,
             settings_version: state.settings.version,
+            timer: state.timer.active,
             gpus: state.gpu.as_ref().map_or(&[], |gpu| &gpu.adapters),
             samples: newer.into_iter().skip(skip).collect(),
         })?

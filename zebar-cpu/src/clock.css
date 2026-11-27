@@ -1,0 +1,117 @@
+.clock-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 280px;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #e3e6fa;
+  white-space: nowrap;
+}
+.clock-button time { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.clock-button:hover { border-color: #515c88; background: #202a48; }
+.clock-timer-active { padding-bottom: 4px; border-color: #414a74; background: #1c2540; }
+.clock-countdown { flex: none; padding-left: 8px; border-left: 1px solid #414a74; color: #d5ccff; font-weight: 650; }
+.clock-progress { position: absolute; inset: auto 8px 4px; height: 2px; overflow: hidden; border-radius: 2px; background: #393d61; }
+.clock-progress::before { content: ''; position: absolute; left: 0; width: var(--time-elapsed); height: 100%; background: var(--accent); }
+.clock-overdue { border-color: #9c6159; background: #432932; animation: clock-alarm .7s ease-in-out 3; }
+.clock-overdue:hover { border-color: #d68d7c; background: #53323e; }
+.clock-overdue .clock-countdown { border-color: #855251; color: #ffc1ac; }
+.clock-overdue .clock-progress::before { background: #c88372; }
+@keyframes clock-alarm { 50% { border-color: #ffb49d; background: #613c48; } }
+@media (prefers-reduced-motion: reduce) { .clock-overdue { animation: none; } }
+@media (max-width: 840px) {
+  .clock-button { max-width: 225px; }
+  .bar .heatmap, .bar .sparkline { width: 48px; }
+}
+@media (max-width: 600px) {
+  .clock-button { max-width: 175px; }
+  .bar .heatmap, .bar .sparkline { display: none; }
+}
+
+.clock-panel { gap: 11px; background: linear-gradient(155deg, #202748, #151b30 55%); }
+.clock-panel .panel-header h1 { font-size: 15px; color: #d8ddf4; }
+.clock-hero { padding: 0 6px 4px; }
+.clock-hero time { display: block; color: #f7f4ff; font-size: 35px; line-height: 1.15; font-weight: 650; }
+.clock-hero p { margin-top: 4px; color: #c3cbe6; font-size: 13px; }
+.clock-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: #121a30; }
+.clock-control {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid #39466f;
+  border-radius: 6px;
+  background: #242e4c;
+  color: #e2e6f9;
+  font-size: 13px;
+}
+.clock-control:hover { border-color: #7c73b4; background: #35365d; }
+.clock-control:disabled, .clock-control[aria-disabled='true'] { opacity: .55; cursor: default; }
+.clock-tabs button { border-color: transparent; background: transparent; color: var(--muted); }
+.clock-tabs button[aria-selected='true'] { border-color: #625994; background: #38315c; color: #f0eaff; }
+.clock-primary { border-color: #7768b8; background: #4a3e7f; }
+.calendar-card, .timer-card { padding: 11px 10px 8px; border: 1px solid var(--border); border-radius: 10px; background: #161e36; }
+.calendar-head { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 0 3px 8px; }
+.calendar-head h2, .timer-card h2 { font-size: 14px; font-weight: 650; }
+.calendar-controls { display: flex; gap: 4px; }
+.calendar-arrow { min-width: 26px; padding: 0 5px 3px; font-size: 21px; line-height: 1; }
+.calendar-grid { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: center; }
+.calendar-grid th { height: 27px; color: var(--muted); font-size: 11px; font-weight: 550; }
+.calendar-grid td { height: 34px; padding: 0; font-size: 13px; }
+.calendar-grid .other-month { color: #8792b2; }
+.calendar-grid td time { display: inline-grid; width: 30px; height: 30px; place-items: center; }
+.calendar-grid time[aria-current='date'] { border-radius: 10px; background: #b6acff; color: #201844; font-weight: 750; }
+
+.timer-card { display: grid; gap: 10px; padding: 13px; }
+.timer-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.timer-presets button { min-height: 40px; }
+.timer-form { display: grid; gap: 8px; padding-top: 11px; border-top: 1px solid var(--border); }
+.timer-fields, .clock-format-custom { display: flex; flex-wrap: wrap; align-items: end; gap: 7px; }
+.timer-fields label { flex: 1 1 58px; }
+.timer-fields label, .clock-format-field { display: grid; min-width: 0; gap: 4px; color: #c8d0ea; font-size: 12px; }
+.timer-fields input, .clock-format-field input, .clock-format-field select {
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid #414d77;
+  border-radius: 6px;
+  background: #111a31;
+  color: #e8eafa;
+  font: inherit;
+}
+.timer-fields .clock-primary, .clock-format-custom .clock-primary { min-height: 32px; }
+.timer-running { display: grid; justify-items: start; gap: 9px; }
+.timer-running strong { color: #d7ccff; font-size: 37px; font-weight: 650; }
+.timer-running.timer-finished strong { color: #ffc1ac; }
+.timer-running progress { width: 100%; height: 7px; accent-color: var(--accent); direction: ltr; }
+.clock-muted { color: var(--muted); font-size: 12px; }
+.clock-error, .settings-section .clock-error { color: #ffb9ab; font-size: 12px; }
+
+.settings-fields { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.clock-setting-heading { display: flex; align-items: center; gap: 6px; }
+.clock-help { position: relative; }
+.clock-help-button { width: 22px; min-height: 22px; padding: 0; border-radius: 50%; color: #d8d0ff; }
+.clock-help-tip {
+  position: absolute;
+  z-index: 1;
+  top: 100%;
+  left: -34px;
+  display: none;
+  width: min(305px, calc(100vw - 64px));
+  padding: 10px;
+  border: 1px solid #6c6398;
+  border-radius: 8px;
+  background: #26244a;
+  box-shadow: 0 4px 16px #0b1029b0;
+  font-size: 12px;
+}
+.clock-help:hover .clock-help-tip, .clock-help:focus-within .clock-help-tip { display: grid; gap: 4px; }
+.clock-help-tip code { color: #e9dcff; }
+.clock-format-custom .clock-format-field { flex: 1 1 165px; }
+.clock-preview { display: flex; align-items: baseline; gap: 8px; color: var(--muted); font-size: 12px; }
+.clock-preview output { overflow-wrap: anywhere; color: #eee9ff; font-size: 13px; }

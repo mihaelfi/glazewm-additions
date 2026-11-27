@@ -27,7 +27,8 @@ frameworks or chart libraries, and no per-widget polling loops that duplicate th
 | Zebar settings | `%USERPROFILE%\.glzr\zebar\settings.json` | Picks which widget pack starts |
 | Installed widget pack | `%USERPROFILE%\.glzr\zebar\cpu-activity\` | Built output + collector exe; Zebar loads from here |
 | Widget settings | `%USERPROFILE%\.glzr\zebar\cpu-activity\settings.json` | Written by the collector when Settings changes; missing = defaults |
-| Widget pack source | `C:\codex\glazewm\zebar-cpu\` | Solid + TypeScript + Vite, plus a Rust collector (`native/main.rs`, `native/processes.rs`, `native/gpu.rs`, `native/settings.rs`) |
+| Timer state | `%USERPROFILE%\.glzr\zebar\cpu-activity\timer.json` | Collector-owned active deadline, duration, and alarm timestamp |
+| Widget pack source | `C:\codex\glazewm\zebar-cpu\` | Solid + TypeScript + Vite with a Rust collector in `native/` |
 | GlazeWM installer | `C:\codex\glazewm\glazewm-v3.10.1.exe` | Version in use: GlazeWM 3.10.1 |
 | Launcher source | `C:\codex\glazewm\launcher\` | WPF, .NET 10 (`GlazeLauncher.csproj`) |
 | Installed launcher | `%USERPROFILE%\.glzr\launcher\` | Published output; GlazeWM starts it from here |
@@ -109,6 +110,7 @@ pack `cpu-activity`, widget `bar`, preset `default` (backup: `settings.before-cp
 | `gpu-activity` | `dist/gpu.html` | 576 × 700, top-right, `top_most`, focused | GPU details pop-up |
 | `settings` | `dist/settings.html` | 576 × 660, top-right, `top_most`, focused | Settings pop-up, opened from the gear in any popup |
 | `storage-activity` | `dist/storage.html` | 576 × 470, top-right, `top_most`, focused | Storage details pop-up; may launch `explorer.exe` with a drive root |
+| `clock` | `dist/clock.html` | 384 × 492, top-right, `top_most`, focused | Month calendar and persistent timer |
 
 The bar opens the panels with `startWidget` on the bar's own monitor
 (`src/activity-panel.ts`, offset −12px / 50px, size clamped to the monitor). The
@@ -136,11 +138,19 @@ path when you deploy (or check that the relative one works first).
 Left: a brand mark (four dots), then the workspace buttons. Right, in order (fixed by the "widget reorder" change):
 paused indicator and binding-mode buttons (shown only when active) → Wi-Fi SSID → battery →
 **storage card** → **RAM** (sparkline + % ) → **CPU** (heatmap + %) → **GPU** (green sparkline + %) → tiling-direction toggle (↔/↕) →
-weather (°C) → input language → clock (`yyyy-MM-dd HH:mm`).
+weather (°C) → input language → clock (default `yyyy-MM-dd HH:mm`).
 
 - **Input language** is shortened to the first part of the layout code, in upper case (e.g. `en-US` → `EN`). This is the "short language labels" change.
 - Clicking a workspace runs `focus --workspace <name>`. Clicking the tiling toggle runs `toggle-tiling-direction`.
 - **GlazeWM command strings: never quote arguments.** GlazeWM keeps the quotes as part of the value, so `focus --workspace "12"` looks for a workspace named `"12"` and fails. Pass names bare. (The bar used `JSON.stringify` here until 2026-11-27, which broke workspace clicks and the binding-mode button.)
+
+### Clock, calendar and timer (`src/clock-panel.tsx`, `src/clock.ts`, `src/timer.ts`, `native/timer.rs`)
+
+- The far-right clock button opens on the bar's monitor with Calendar selected. The popup shows local time with seconds, a locale-aware month grid with Today and month navigation, a Timer tab, and a link to shared Settings.
+- Timer offers immediate 5, 10 and 15 minute presets and a custom duration in hours/minutes (up to 999 h 59 min). There is one active timer across all bars. The digits count down while the progress line fills from left to right as time elapses. Cancel from the Timer tab.
+- At expiry, the clock briefly pulses when motion is enabled and the elapsed line turns amber. The collector plays a Windows chime about every four seconds until dismissal. Turn off **Repeat timer chime until dismissed** in shared Settings under **Clock** for a single chime. Click a clock button or Dismiss timer in the Timer tab to silence and clear it.
+- The collector atomically writes the absolute Unix-millisecond deadline and duration to `timer.json` beside its executable. After restart it restores the active timer, including overdue alarms. The saved alarm timestamp prevents a single chime from playing twice. Repeating alarms resume if still overdue and repeat is enabled. Dismissal persists as `null`.
+- `/history` carries timer state to each bar on its existing feed. The open popup reads `/timer` once and listens for actions over a BroadcastChannel. `/timer/start` rejects a second timer, and `/timer/clear` checks the deadline so stale actions cannot clear a timer with a different deadline. The display uses Zebar's date provider for ticks and does not send per-second timer requests.
 
 ### Storage card and popup (`src/drives.tsx`, `src/storage-panel.tsx`)
 
@@ -173,12 +183,13 @@ weather (°C) → input language → clock (`yyyy-MM-dd HH:mm`).
 - **Why our own popup:** Zebar 3.3.1's pack editor (Settings → Custom packs → pack) can't hold
   custom options. A widget's config is only placement presets, privileges and caching (`WidgetConfig` in
   `node_modules/zebar/dist/index.d.ts`).
-- **Opening it:** the gear button in the header of every popup (`src/panel-header.tsx`, shared by all four
-  popups). The popup you came from closes on blur. Settings closes on Esc, on blur or with ×.
+- **Opening it:** the gear button in the shared popup header (`src/panel-header.tsx`). The popup you came from closes on blur. Settings closes on Esc, on blur or with ×.
 - **Options** (all detected at runtime, nothing specific to this PC):
 
   | Setting | Values | Default | Effect |
   |---|---|---|---|
+  | `clockFormat` | Luxon format preset or custom string | `yyyy-MM-dd HH:mm` | Date and time on the bar. Settings includes a live preview and a syntax tooltip |
+  | `repeatTimerChime` | boolean | `true` | Repeat the expiry chime until dismissal. Off plays it once |
   | `historyMinutes` | 1, 5, 10, 15 | 1 | Window for every graph, heatmap, "N ago" label and the CPU process Avg/Peak |
   | `bar.storage/ram/cpu/gpu` | booleans | all `true` | Which cards the bar shows. At least one must stay, because the cards are the only way into the popups (enforced in the UI and the collector) |
   | `drives` | letters or `null` | `null` = all | Drives in the storage card **and** popup. Selecting every drive saves `null`, so drives added later show up |
@@ -273,7 +284,7 @@ cargo build --release --offline     # -> target\release\zebar-cpu-collector.exe 
 ```
 
 Then **replace** the installed `dist\` as a whole: move the old one aside as
-`dist.before-<change>-<timestamp>` and copy the new `dist\` in, so all three HTML files and
+`dist.before-<change>-<timestamp>` and copy the new `dist\` in, so all widget HTML files and
 their assets stay in step. Copy `target\release\zebar-cpu-collector.exe` only if it changed.
 Keep the installed `zpack.json` (see the absolute-path note above); when you add a
 widget, add it to both the installed and the source `zpack.json`. Before replacing the
@@ -369,10 +380,13 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
 - `.glzr\zebar\settings.before-cpu-activity-20261127-111335.json`: starter-pack Zebar settings
 - `.glzr\zebar\cpu-activity\backup-before-gpu-20261127-124849\`: installed `dist\`, `zpack.json` and collector exe from before the GPU widget and toggle
 - `.glzr\zebar\cpu-activity\bar.before-workspace-icons-20261127-111836.html`, `bar.before-widget-reorder-20261127-114545.html`, `bar.before-short-language-labels-20261127-120006.html`
+- `.glzr\zebar\cpu-activity\dist.before-clock-20261127-154825\`, `zpack.json.before-clock-20261127-154825`, `zebar-cpu-collector.exe.before-clock-20261127-154825`: installed pack before the clock and timer
+- `.glzr\zebar\cpu-activity\dist.before-timer-repeat-20261127-155842\`, `zebar-cpu-collector.exe.before-timer-repeat-20261127-155842`: installed assets and collector before elapsed progress and the repeating chime
 
 ## Open items and known issues
 
-- Ideas for more settings: temperature unit, clock format, CPU card style (heatmap or sparkline), and the number of process rows.
+- Ideas for more settings: temperature unit, CPU card style (heatmap or sparkline), and the number of process rows.
+- Check native clock popup placement and dismissal on both monitors and listen for the chime on the desktop. The native desktop tool does not expose the Zebar bar windows.
 - **Not yet portable:** the installed `zpack.json` uses the absolute collector path `C:\Users\mihae\...`. To share the pack, check whether Zebar accepts a path relative to the pack.
 - **PowerToys Run must stay off** (it was turned off on 2026-11-27). If it is turned back on, it takes Alt+Space again:
   `RegisterHotKey` fails with error 1409, and the launcher keeps retrying every 5 s.
@@ -389,6 +403,10 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
 Newest first. One entry per piece of work: date, what changed, files touched, anything left unfinished.
 
 ### 2026-11-27
+- **Changed timer progress to fill left to right and added a repeat-chime setting.** Updated `src/timer.ts`, `src/bar.tsx`, `src/clock-panel.tsx`, and `src/clock.css` for elapsed progress. Added the setting to `src/clock-settings.tsx`, `src/settings-panel.tsx`, `src/settings.ts`, and `native/settings.rs`. `native/timer.rs` and `native/main.rs` use the existing collector tick for repeats and stop on dismissal or when repeat is turned off. Deployed the rebuilt pack and collector.
+  - Browser checks covered elapsed fill and the saved setting. An isolated collector verified repeat scheduling, dismissal, one-shot mode, and restoration across restart with sound commands recorded in a log. Audible playback on the desktop remains open.
+- **Added and deployed the clock, calendar, and timer.** `clock.html`, `src/clock-panel.tsx`, `src/clock-settings.tsx`, `src/clock.ts`, `src/timer.ts` and `src/clock.css` implement the UI. Integrated it into the bar, shared Settings, `activity-panel.ts`, `metrics-feed.ts`, `vite.config.ts` and both widget manifests. `native/timer.rs` owns timer persistence and the Windows chime. `native/main.rs`, `native/settings.rs` and `native/state_file.rs` wire it into the existing collector and settings file.
+  - Verified the UI and collector builds and live settings and metrics after restarting Zebar. Browser-tested the rendered calendar, month navigation, timer presets, countdown and overdue dismissal, popup links, format preview, and syntax tooltip. An isolated collector test covered settings migration, 25-hour timer restore, expiry during downtime, one alarm across restarts, and durable dismissal. Native window placement and audible playback remain open.
 - **Added search providers and prioritized open windows.** `SearchProviders.cs` separates app, window and command results. `Search.cs` ranks a shared match tier and workspace ahead of provider priority and usage. `Actions.cs`, `App.xaml.cs` and `MainWindow.xaml.cs` use provider-owned actions and result metadata. Browser and Explorer tab providers remain open items.
   - Checked ranking, recents, provider priorities, activation callbacks and highlight fields with a local harness. Published and installed the launcher. From ws 14, `cla` selected Claude's Window result above its Application row, and Enter made the existing Claude window visible and foreground on ws 11.
 - **Added launcher transitions and match highlights.** `MainWindow.xaml` and `.xaml.cs` add a short opening effect and clearer selection and search focus, with motion controlled by Windows' animation setting. `Search.cs`, `HighlightedTextBlock.cs`, and `App.xaml` highlight the characters found by the existing matcher. The ranking comparison passed for 20,000 queries. Published and restarted the installed launcher.

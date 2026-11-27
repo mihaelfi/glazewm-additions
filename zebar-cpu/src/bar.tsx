@@ -2,33 +2,37 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'so
 import { render } from 'solid-js/web';
 import { createProvider } from 'zebar';
 import { usePanelToggle, type PanelName } from './activity-panel';
+import { formatClock, useClockTime } from './clock';
 import { describeDrive, DriveBars, useDrives } from './drives';
 import { Heatmap } from './heatmap';
 import { HistoryGraph } from './history-graph';
 import { memoryPercent, useMetricsFeed } from './metrics-feed';
 import { type BarItem, formatWindow, gpuIndex, showsDrive, useSettings } from './settings';
+import { clearTimer, elapsedPercent, isOverdue, timerChanged, timerLabel } from './timer';
 import { appsInWorkspace, watchWorkspaceApps, type WorkspaceApp } from './workspace-apps';
 import './widget.css';
+import './clock.css';
 import './workspace-icons.css';
 
 function Bar() {
   const glazewm = createProvider({ type: 'glazewm' });
-  const date = createProvider({ type: 'date', formatting: 'yyyy-MM-dd HH:mm' });
   const keyboard = createProvider({ type: 'keyboard', refreshInterval: 1000 });
   const network = createProvider({ type: 'network' });
   const battery = createProvider({ type: 'battery' });
   const weather = createProvider({ type: 'weather' });
   const [wm, setWm] = createSignal(glazewm.output);
   const [workspaceApps, setWorkspaceApps] = createSignal<Map<string, WorkspaceApp[]> | null>(null);
-  const [clock, setClock] = createSignal(date.output);
+  const now = useClockTime();
   const [inputLanguage, setInputLanguage] = createSignal(keyboard.output);
   const [connection, setConnection] = createSignal(network.output);
   const [charge, setCharge] = createSignal(battery.output);
   const [forecast, setForecast] = createSignal(weather.output);
   const [panelError, setPanelError] = createSignal<PanelName>();
+  const [timerError, setTimerError] = createSignal(false);
+  const [acknowledging, setAcknowledging] = createSignal(false);
   const { settings, sync } = useSettings();
   const historySeconds = () => settings().historyMinutes * 60;
-  const { samples, status, gpus, settingsVersion } = useMetricsFeed(true, historySeconds);
+  const { samples, status, gpus, settingsVersion, activeTimer } = useMetricsFeed(true, historySeconds);
   createEffect(() => sync(settingsVersion()));
   const panels = usePanelToggle();
   const allDrives = useDrives();
@@ -38,7 +42,6 @@ function Bar() {
 
   glazewm.onOutput(setWm);
   onCleanup(watchWorkspaceApps(setWorkspaceApps));
-  date.onOutput(setClock);
   keyboard.onOutput(setInputLanguage);
   network.onOutput(setConnection);
   battery.onOutput(setCharge);
@@ -82,6 +85,38 @@ function Bar() {
     } catch (error) {
       console.error(`Could not open ${name}`, error);
       setPanelError(name);
+    }
+  }
+
+  const clockLabel = createMemo(() => formatClock(now(), settings().clockFormat));
+  const countdown = createMemo(() => {
+    const timer = activeTimer();
+    return timer ? timerLabel(timer, now()) : '';
+  });
+  const overdue = createMemo(() => {
+    const timer = activeTimer();
+    return timer !== null && isOverdue(timer, now());
+  });
+  const clockAction = () => timerError() && overdue() ? 'Could not dismiss timer. Click to retry.'
+    : overdue() ? 'Dismiss timer alarm'
+    : panelError() === 'clock' ? 'Calendar could not open. Click to retry.' : 'Open calendar and timer';
+
+  async function clickClock() {
+    const timer = activeTimer();
+    if (!timer || !isOverdue(timer, Date.now())) {
+      await togglePanel('clock');
+      return;
+    }
+    if (acknowledging()) return;
+    setTimerError(false);
+    setAcknowledging(true);
+    try {
+      await clearTimer(timer);
+      timerChanged();
+    } catch {
+      setTimerError(true);
+    } finally {
+      setAcknowledging(false);
     }
   }
 
@@ -234,9 +269,25 @@ function Bar() {
             </span>
           )}
         </Show>
-        <Show when={clock()}>
-          {value => <time class="clock" dateTime={value().iso ?? undefined}>{value().formatted}</time>}
-        </Show>
+        <button
+          class="clock-button"
+          classList={{ 'clock-timer-active': !!activeTimer(), 'clock-overdue': overdue() }}
+          aria-haspopup={overdue() ? undefined : 'dialog'}
+          aria-label={`${clockLabel()}${countdown() ? `. Timer ${countdown()}` : ''}. ${clockAction()}`}
+          title={`${clockLabel()} · ${clockAction()}`}
+          disabled={acknowledging()}
+          onPointerDown={() => panels.press('clock')}
+          onClick={() => void clickClock()}
+        >
+          <time dateTime={new Date(now()).toISOString()}>{clockLabel()}</time>
+          <Show when={activeTimer()}>
+            {timer => <>
+              <span class="clock-countdown">{countdown()}</span>
+              <span class="clock-progress" aria-hidden="true"
+                style={{ '--time-elapsed': `${elapsedPercent(timer(), now())}%` }} />
+            </>}
+          </Show>
+        </button>
       </div>
     </main>
   );

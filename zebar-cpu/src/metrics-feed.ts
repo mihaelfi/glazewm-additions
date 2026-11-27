@@ -1,5 +1,6 @@
 import { createEffect, createSignal, on, onCleanup, onMount, type Accessor } from 'solid-js';
 import { currentWidget, shellSpawn } from 'zebar';
+import type { Timer } from './timer';
 
 /** Seconds of history used when no setting is available. */
 export const DEFAULT_HISTORY_SECONDS = 60;
@@ -43,6 +44,7 @@ export function memoryPercent(memory?: MemorySample): number | undefined {
 interface MetricsHistory {
   session: number;
   settingsVersion?: number;
+  timer?: Timer | null;
   gpus?: GpuAdapter[];
   samples: MetricsSample[];
 }
@@ -71,6 +73,10 @@ export function useMetricsFeed(
   const [status, setStatus] = createSignal<FeedStatus>('starting');
   const [gpus, setGpus] = createSignal<GpuAdapter[]>([]);
   const [settingsVersion, setSettingsVersion] = createSignal<number>();
+  const [activeTimer, setActiveTimer] = createSignal<Timer | null>(null, {
+    equals: (previous, next) => previous?.deadlineMs === next?.deadlineMs
+      && previous?.alarmAtMs === next?.alarmAtMs && previous?.durationSeconds === next?.durationSeconds,
+  });
   let session = 0;
   let lastSequence = 0;
   let lastSampleAt = 0;
@@ -87,6 +93,7 @@ export function useMetricsFeed(
       );
       if (stopped) return;
       setSettingsVersion(history.settingsVersion);
+      setActiveTimer(history.timer ?? null);
 
       if (history.session !== session) {
         session = history.session;
@@ -139,5 +146,5 @@ export function useMetricsFeed(
     window.clearTimeout(timer);
   });
 
-  return { samples, status, gpus, settingsVersion };
+  return { samples, status, gpus, settingsVersion, activeTimer };
 }

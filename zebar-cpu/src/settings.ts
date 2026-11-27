@@ -1,4 +1,5 @@
 import { createSignal, onMount } from 'solid-js';
+import { DEFAULT_CLOCK_FORMAT, validClockFormat } from './clock';
 import { requestMetrics } from './metrics-feed';
 
 /**
@@ -13,6 +14,8 @@ export interface Settings {
   drives: string[] | null;
   /** Name of the GPU the bar follows. `null` picks the one with the most video memory. */
   gpuAdapter: string | null;
+  clockFormat: string;
+  repeatTimerChime: boolean;
 }
 
 export type BarItem = keyof Settings['bar'];
@@ -24,6 +27,8 @@ export const DEFAULT_SETTINGS: Settings = {
   bar: { storage: true, ram: true, cpu: true, gpu: true },
   drives: null,
   gpuAdapter: null,
+  clockFormat: DEFAULT_CLOCK_FORMAT,
+  repeatTimerChime: true,
 };
 
 interface SettingsSnapshot {
@@ -54,13 +59,18 @@ export function useSettings() {
   let version = 0;
   let fetching = false;
 
+  function apply(snapshot: SettingsSnapshot) {
+    version = snapshot.version;
+    const format = snapshot.settings.clockFormat ?? '';
+    setSettings({ ...DEFAULT_SETTINGS, ...snapshot.settings, clockFormat: validClockFormat(format) ? format : DEFAULT_CLOCK_FORMAT });
+  }
+
   async function refresh() {
     if (fetching) return;
     fetching = true;
     try {
       const snapshot = await requestMetrics<SettingsSnapshot>('/settings');
-      version = snapshot.version;
-      setSettings(snapshot.settings);
+      apply(snapshot);
       setLoaded(true);
     } catch {
       // Keep the current settings; the next sync tries again.
@@ -74,16 +84,21 @@ export function useSettings() {
   }
 
   async function save(next: Settings) {
+    const previous = settings();
     setSettings(next);
-    const response = await fetch('http://127.0.0.1:6128/settings/save', {
-      method: 'POST',
-      body: JSON.stringify(next),
-      signal: AbortSignal.timeout(2000),
-    });
-    if (!response.ok) throw new Error(`Saving settings failed with ${response.status}`);
-    const snapshot: SettingsSnapshot = await response.json();
-    version = snapshot.version;
-    setSettings(snapshot.settings);
+    try {
+      const response = await fetch('http://127.0.0.1:6128/settings/save', {
+        method: 'POST',
+        body: JSON.stringify(next),
+        signal: AbortSignal.timeout(2000),
+      });
+      if (!response.ok) throw new Error(`Saving settings failed with ${response.status}`);
+      const snapshot: SettingsSnapshot = await response.json();
+      apply(snapshot);
+    } catch (error) {
+      setSettings(previous);
+      throw error;
+    }
   }
 
   onMount(() => void refresh());

@@ -61,7 +61,6 @@ h1, h2, p { margin: 0; }
 .workspace:hover, .bar-control:hover { background: #363f67; color: #fff; }
 .bar-control { color: #dedaff; }
 .layout-control { font-size: 17px; line-height: 1; }
-.clock { color: #d8dff4; white-space: nowrap; }
 .bar-status { justify-content: flex-end; gap: 13px; }
 .bar-stat { white-space: nowrap; }
 .input-language { color: var(--muted); font-weight: 600; }
@@ -506,7 +505,7 @@ h1, h2, p { margin: 0; }
 }
 @media (max-width: 840px) {
   .bar { grid-template-columns: minmax(0, 1fr) auto; }
-  .bar .clock, .bar .battery { display: none; }
+  .bar .battery { display: none; }
 }
 @media (max-width: 520px) {
   .bar .heatmap, .bar .sparkline { width: 65px; }

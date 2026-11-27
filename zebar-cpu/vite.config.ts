@@ -7,7 +7,7 @@ export default defineConfig({
   build: {
     target: 'es2022',
     rollupOptions: {
-      input: ['bar.html', 'panel.html', 'ram.html', 'gpu.html', 'storage.html', 'settings.html'],
+      input: ['bar.html', 'panel.html', 'ram.html', 'gpu.html', 'storage.html', 'settings.html', 'clock.html'],
     },
   },
 });

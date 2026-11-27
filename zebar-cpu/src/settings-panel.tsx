@@ -1,10 +1,12 @@
 import { createSignal, For, onMount, Show } from 'solid-js';
 import { render } from 'solid-js/web';
 import { useCloseActivityPanel } from './activity-panel';
+import { ClockSettings } from './clock-settings';
 import { formatDriveSize, useDrives } from './drives';
 import { requestMetrics, type GpuAdapter } from './metrics-feed';
 import { type BarItem, HISTORY_CHOICES, type Settings, useSettings } from './settings';
 import './widget.css';
+import './clock.css';
 
 const barItems: { key: BarItem; label: string }[] = [
   { key: 'storage', label: 'Storage' },
@@ -19,6 +21,7 @@ function SettingsPanel() {
   const drives = useDrives();
   const [gpus, setGpus] = createSignal<GpuAdapter[]>([]);
   const [error, setError] = createSignal('');
+  const [saving, setSaving] = createSignal(false);
 
   onMount(() => {
     requestMetrics<{ gpus?: GpuAdapter[] }>('/history?limit=0')
@@ -26,9 +29,19 @@ function SettingsPanel() {
       .catch(() => setGpus([]));
   });
 
-  function update(change: Partial<Settings>) {
+  async function update(change: Partial<Settings>) {
+    if (saving()) return false;
+    setSaving(true);
     setError('');
-    save({ ...settings(), ...change }).catch(() => setError("Couldn't save. Is the collector running?"));
+    try {
+      await save({ ...settings(), ...change });
+      return true;
+    } catch {
+      setError("Couldn't save your changes. Try again.");
+      return false;
+    } finally {
+      setSaving(false);
+    }
   }
 
   const barCount = () => barItems.filter(item => settings().bar[item.key]).length;
@@ -49,6 +62,10 @@ function SettingsPanel() {
       </header>
 
       <Show when={loaded()} fallback={<p class="process-status" role="status">Loading settings…</p>}>
+        <Show when={error()}><p class="settings-note clock-error" role="alert">{error()}</p></Show>
+        <fieldset class="settings-fields" disabled={saving()} aria-label="Widget settings">
+        <ClockSettings format={settings().clockFormat} onSave={clockFormat => update({ clockFormat })}
+          repeatTimerChime={settings().repeatTimerChime} onRepeatTimerChimeChange={repeatTimerChime => void update({ repeatTimerChime })} />
         <section class="settings-section" aria-labelledby="history-setting">
           <h2 id="history-setting">History</h2>
           <p>How far back graphs, heatmaps and process averages look.</p>
@@ -150,9 +167,7 @@ function SettingsPanel() {
           </Show>
         </section>
 
-        <p class="settings-note" role="status">
-          {error() || 'Changes apply right away. They are saved in settings.json in the widget pack folder.'}
-        </p>
+        </fieldset>
       </Show>
     </main>
   );

@@ -129,6 +129,29 @@
       ]
     },
     {
+      "name": "clock",
+      "htmlPath": "./dist/clock.html",
+      "zOrder": "top_most",
+      "shownInTaskbar": false,
+      "focused": true,
+      "resizable": false,
+      "transparent": true,
+      "includeFiles": ["dist/**/*"],
+      "privileges": { "shellCommands": [] },
+      "presets": [
+        {
+          "name": "default",
+          "anchor": "top_right",
+          "offsetX": "-12px",
+          "offsetY": "50px",
+          "width": "384px",
+          "height": "492px",
+          "monitorSelection": { "type": "primary" },
+          "dockToEdge": { "enabled": false, "edge": null, "windowMargin": "0px" }
+        }
+      ]
+    },
+    {
       "name": "settings",
       "htmlPath": "./dist/settings.html",
       "zOrder": "top_most",

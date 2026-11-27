@@ -7,6 +7,7 @@ export const panelHeights = {
   'ram-activity': 620,
   'gpu-activity': 700,
   'storage-activity': 470,
+  clock: 492,
   settings: 660,
 };
 export type PanelName = keyof typeof panelHeights;
@@ -25,7 +26,8 @@ export async function openActivityPanel(name: PanelName) {
     candidate.position.x === monitor?.position.x && candidate.position.y === monitor.position.y,
   );
   const preferredHeight = panelHeights[name];
-  const width = monitor ? Math.min(576, Math.floor(monitor.size.width / monitor.scaleFactor) - 24) : 576;
+  const preferredWidth = name === 'clock' ? 384 : 576;
+  const width = monitor ? Math.min(preferredWidth, Math.floor(monitor.size.width / monitor.scaleFactor) - 24) : preferredWidth;
   const height = monitor
     ? Math.min(preferredHeight, Math.floor(monitor.size.height / monitor.scaleFactor) - 68)
     : preferredHeight;
