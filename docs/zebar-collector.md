@@ -24,6 +24,8 @@ happens here, not in the webviews. Files: `main.rs` (server, sampling loop, endp
 
 - `/history?session=&after=&limit=<seconds>` → `{ session, settingsVersion, timer, gpus, driveRates, samples }`:
   new historical samples since `after` and the latest rate snapshot by drive letter.
+  With `view=drives`, each sample contains only `{ sequence, driveRates }`. Other callers receive
+  the regular CPU, memory, and GPU sample shape.
 - `/memory/processes` → top 10 processes by working set, from the latest 1 s sample.
 - `/cpu/processes?window=<seconds>` → `{ window, processes: [{ name, pid, current, average, peak }] }`: the top 40 by average.
   Values are % of **total** CPU (Task Manager style); `window` is the number of seconds covered.
@@ -66,7 +68,9 @@ Uses the same sources as Task Manager, so it works for any vendor:
   in `pdh.rs`.
 - Reports only drive-letter instances as `{ read, write }` in `driveRates`. A missing instance or
   `null` direction means the counter was unavailable. A zero means the counter measured no traffic.
-- Holds only the latest snapshot. The frontend joins it to Zebar's capacity data by drive letter.
+- Keeps the last 15 minutes in the existing in-memory sample ring. The Storage popup requests
+  the current history window, then receives updates by sequence. The bar still reads the latest
+  snapshot from the top-level response. The frontend joins disk data to capacity by drive letter.
 
 ## Settings storage (`settings.rs`)
 
@@ -92,12 +96,17 @@ within a few hundred ms, so a single stop-then-copy can fail with "file in use".
 
 ## Known issues and backups
 
+- Disk history is in memory and starts filling after each collector restart.
 - Volumes with no usable Windows logical disk counter show unavailable rates.
 - Live collector backups are listed in [Zebar](zebar.md#backups).
 
 ## Change log
 
 ### 2026-11-27
+- **Retained disk activity history.** `main.rs` stores drive rates in the existing sample ring and
+  serves disk-only samples on `/history?view=drives`. `drive_io.rs` returns an owned snapshot each tick.
+  The isolated collector verified sample limits, incremental reads, and compatibility with the
+  regular metrics feed. The deployed collector returned retained samples for all six local drives.
 - **Added logical disk throughput.** `drive_io.rs` samples two counters, `pdh.rs` extracts the existing
   PDH code from `gpu.rs`, and `main.rs` carries current rates in `/history`. `settings.rs` persists
   and validates per-drive modes. The collector retains the latest rates. An isolated collector

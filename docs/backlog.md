@@ -187,7 +187,8 @@ Items:
   listed drives. See [Zebar storage](zebar.md#storage-card-and-popup-srcdrivestsx-srcstorage-paneltsx).
 - **Drive meter track contrast** · `done` 2026-11-27. Brightened the bar's meter tracks so partially filled
   meters show their full height next to a nearly full drive.
-- **Disk activity history** · `idea`. Consider a read/write graph for the selected drive in the Storage popup.
+- **Disk activity history** · `done` 2026-11-27. Show all visible drives in the Storage popup with a shared
+  scale and history window, a full-width tile for one drive, and scrolling when the grid overflows.
 - **Space map, TreeSize-style** · `idea` · L. A separate helper program (not the collector: scanning terabytes is heavy and runs on
   demand) that scans a drive, caches the result and shows where the space goes at a glance. Scan options to weigh: reading the NTFS
   master file table directly (very fast, needs admin) or ordinary directory listing (no admin, slower).

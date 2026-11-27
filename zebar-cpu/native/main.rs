@@ -39,6 +39,8 @@ struct Sample {
     usage: Vec<u8>,
     memory: Memory,
     gpu: Vec<gpu::GpuSample>,
+    #[serde(skip)]
+    drive_rates: drive_io::Rates,
 }
 
 #[derive(Serialize)]
@@ -57,7 +59,21 @@ struct History<'a> {
     gpus: &'a [gpu::AdapterInfo],
     #[serde(rename = "driveRates")]
     drive_rates: &'a drive_io::Rates,
-    samples: Vec<&'a Sample>,
+    samples: HistorySamples<'a>,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum HistorySamples<'a> {
+    Metrics(Vec<&'a Sample>),
+    Drives(Vec<DriveSample<'a>>),
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DriveSample<'a> {
+    sequence: u64,
+    drive_rates: &'a drive_io::Rates,
 }
 
 struct State {
@@ -67,7 +83,6 @@ struct State {
     processes: processes::ProcessSampler,
     gpu: Option<gpu::GpuSampler>,
     disk: Option<drive_io::Sampler>,
-    drive_rates: drive_io::Rates,
     settings: settings::SettingsStore,
     timer: timer::TimerStore,
 }
@@ -106,7 +121,6 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         ),
         gpu: gpu::GpuSampler::new(),
         disk: drive_io::Sampler::new(),
-        drive_rates: drive_io::Rates::new(),
         settings: settings::SettingsStore::load(),
         timer: timer::TimerStore::load(),
     };
@@ -119,10 +133,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         let now = Instant::now();
         if now >= sample_at {
             state.timer.tick(state.settings.settings.repeat_timer_chime);
-            if let Some(disk) = &mut state.disk {
-                disk.sample(&mut state.drive_rates);
-            }
-            let State { system, history, gpu, processes, .. } = &mut state;
+            let State { system, history, gpu, disk, processes, .. } = &mut state;
             system.refresh_cpu_usage();
             system.refresh_memory_specifics(MemoryRefreshKind::nothing().with_ram());
             processes.sample();
@@ -147,6 +158,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                         total: system.total_memory(),
                     },
                     gpu: gpu.as_mut().map(gpu::GpuSampler::sample).unwrap_or_default(),
+                    drive_rates: disk.as_mut().map(drive_io::Sampler::sample).unwrap_or_default(),
                 });
             }
             sample_at = now + SAMPLE_INTERVAL;
@@ -206,13 +218,14 @@ fn serve_metrics(mut request: Request, state: &mut State) -> Result<bool, serde_
         return Ok(false);
     }
 
-    let read_parameter = |name| {
+    let parameter = |name| {
         query
             .split('&')
             .filter_map(|parameter| parameter.split_once('='))
             .find(|(key, _)| *key == name)
-            .and_then(|(_, value)| value.parse::<u64>().ok())
+            .map(|(_, value)| value)
     };
+    let read_parameter = |name| parameter(name).and_then(|value| value.parse::<u64>().ok());
     // Seconds of history a widget asked for, capped at what the collector keeps.
     let limit = read_parameter("limit").map_or(DEFAULT_LIMIT, |limit| limit as usize).min(HISTORY_LENGTH);
 
@@ -264,15 +277,25 @@ fn serve_metrics(mut request: Request, state: &mut State) -> Result<bool, serde_
         } else {
             0
         };
-        let newer: Vec<_> = state.history.iter().filter(|sample| sample.sequence > after).collect();
-        let skip = newer.len().saturating_sub(limit);
+        let first = state.history.partition_point(|sample| sample.sequence <= after)
+            .max(state.history.len().saturating_sub(limit));
+        let samples = state.history.range(first..);
+        let samples = if parameter("view") == Some("drives") {
+            HistorySamples::Drives(samples.map(|sample| DriveSample {
+                sequence: sample.sequence,
+                drive_rates: &sample.drive_rates,
+            }).collect())
+        } else {
+            HistorySamples::Metrics(samples.collect())
+        };
+        let empty = drive_io::Rates::new();
         serde_json::to_vec(&History {
             session: state.session,
             settings_version: state.settings.version,
             timer: state.timer.active,
             gpus: state.gpu.as_ref().map_or(&[], |gpu| &gpu.adapters),
-            drive_rates: &state.drive_rates,
-            samples: newer.into_iter().skip(skip).collect(),
+            drive_rates: state.history.back().map_or(&empty, |sample| &sample.drive_rates),
+            samples,
         })?
     };
     let sent = request.respond(

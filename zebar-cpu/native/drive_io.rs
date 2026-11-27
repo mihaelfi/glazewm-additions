@@ -45,10 +45,10 @@ impl Sampler {
         })
     }
 
-    pub fn sample(&mut self, rates: &mut Rates) {
-        rates.clear();
+    pub fn sample(&mut self) -> Rates {
+        let mut rates = Rates::new();
         if !self.query.collect() {
-            return;
+            return rates;
         }
 
         for_each_value(self.read, RATE_FORMAT, &mut self.buffer, |name, value| {
@@ -63,6 +63,7 @@ impl Sampler {
                 rates.entry(letter).or_default().write = rate;
             }
         });
+        rates
     }
 }
 

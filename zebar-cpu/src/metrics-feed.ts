@@ -30,6 +30,11 @@ export interface GpuSample {
 
 export type DriveRates = Partial<Record<string, { read: number | null; write: number | null }>>;
 
+export interface DriveHistorySample {
+  sequence: number;
+  driveRates: DriveRates;
+}
+
 export interface MetricsSample {
   sequence: number;
   total: number;
@@ -43,13 +48,13 @@ export function memoryPercent(memory?: MemorySample): number | undefined {
   return memory?.total ? memory.used / memory.total * 100 : undefined;
 }
 
-interface MetricsHistory {
+interface MetricsHistory<Sample> {
   session: number;
   settingsVersion?: number;
   timer?: Timer | null;
   gpus?: GpuAdapter[];
   driveRates?: DriveRates;
-  samples: MetricsSample[];
+  samples: Sample[];
 }
 
 type FeedStatus = 'starting' | 'live' | 'unavailable';
@@ -72,7 +77,19 @@ export function useMetricsFeed(
   startCollector = false,
   historySeconds: Accessor<number> = () => DEFAULT_HISTORY_SECONDS,
 ) {
-  const [samples, setSamples] = createSignal<MetricsSample[]>([]);
+  return useHistoryFeed<MetricsSample>(historySeconds, startCollector);
+}
+
+export function useDriveHistoryFeed(historySeconds: Accessor<number>) {
+  return useHistoryFeed<DriveHistorySample>(historySeconds, false, '&view=drives');
+}
+
+function useHistoryFeed<Sample extends { sequence: number }>(
+  historySeconds: Accessor<number>,
+  startCollector: boolean,
+  query = '',
+) {
+  const [samples, setSamples] = createSignal<Sample[]>([]);
   const [status, setStatus] = createSignal<FeedStatus>('starting');
   const [gpus, setGpus] = createSignal<GpuAdapter[]>([]);
   const [driveRates, setDriveRates] = createSignal<DriveRates>();
@@ -82,6 +99,7 @@ export function useMetricsFeed(
       && previous?.alarmAtMs === next?.alarmAtMs && previous?.durationSeconds === next?.durationSeconds,
   });
   let session = 0;
+  let cachedLimit = 0;
   let lastSequence = 0;
   let lastSampleAt = 0;
   let retryAt = 0;
@@ -92,21 +110,23 @@ export function useMetricsFeed(
     const startedAt = performance.now();
     try {
       const limit = historySeconds();
-      const history = await requestMetrics<MetricsHistory>(
-        `/history?session=${session}&after=${lastSequence}&limit=${limit}`,
+      const requestSession = limit > cachedLimit ? 0 : session;
+      const history = await requestMetrics<MetricsHistory<Sample>>(
+        `/history?session=${requestSession}&after=${lastSequence}&limit=${limit}${query}`,
       );
       if (stopped) return;
       setSettingsVersion(history.settingsVersion);
       setActiveTimer(history.timer ?? null);
 
-      if (history.session !== session) {
+      cachedLimit = Math.min(limit, historySeconds());
+      if (requestSession === 0 || history.session !== session) {
         session = history.session;
         setGpus(history.gpus ?? []);
         lastSequence = 0;
         lastSampleAt = 0;
-        setSamples(history.samples);
+        setSamples(history.samples.slice(-cachedLimit));
       } else if (history.samples.length) {
-        setSamples(previous => [...previous, ...history.samples].slice(-limit));
+        setSamples(previous => [...previous, ...history.samples].slice(-cachedLimit));
       }
 
       const newest = history.samples.at(-1);
@@ -139,10 +159,9 @@ export function useMetricsFeed(
     }
   }
 
-  // A longer window needs older samples, so fetch the whole window again.
-  createEffect(on(historySeconds, (seconds, previous) => {
-    if (previous !== undefined && seconds > previous) session = 0;
-    else setSamples(current => current.slice(-seconds));
+  createEffect(on(historySeconds, seconds => {
+    cachedLimit = Math.min(cachedLimit, seconds);
+    setSamples(current => current.slice(-seconds));
   }, { defer: true }));
 
   onMount(() => void poll());

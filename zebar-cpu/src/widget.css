@@ -434,52 +434,7 @@ h1, h2, p { margin: 0; }
 .gpu-process-table th:nth-child(4) { width: 120px; }
 .gpu-process-table td:nth-child(3) { color: #c3eca8; }
 
-.storage-overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.storage-overview strong.warn { color: #f5c983; }
-.storage-overview strong.full { color: #ff9b9b; }
-.drive-list { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; list-style: none; }
-.drive-row {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 30px minmax(12px, 1fr) auto auto;
-  grid-template-areas: "letter name name free" "letter meter activity used";
-  align-items: center;
-  gap: 4px 10px;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #1b243e;
-  text-align: left;
-}
-.drive-row:hover { background: #273358; border-color: #4b5888; }
-.drive-letter {
-  grid-area: letter;
-  display: grid;
-  place-items: center;
-  height: 30px;
-  border-radius: 6px;
-  background: #263052;
-  color: #dfe4ff;
-  font-size: 15px;
-}
-.drive-row.warn .drive-letter { background: #4a3a1e; color: #f5c983; }
-.drive-row.full .drive-letter { background: #4d2128; color: #ffb3b3; }
-.drive-name { grid-area: name; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
-.drive-name small { margin-left: 6px; color: var(--muted); font-size: 11px; font-weight: 400; }
-.drive-free { grid-area: free; color: var(--muted); font-size: 12px; text-align: right; white-space: nowrap; }
-.drive-free strong { color: #e8eafa; font-size: 13px; }
-.drive-row.full .drive-free strong { color: #ff9b9b; }
-.drive-row-meter { grid-area: meter; height: 5px; }
-.drive-row-meter::before { inset: 0 auto 0 0; width: var(--used); }
-.drive-used { grid-area: used; color: var(--muted); font-size: 11px; text-align: right; }
-.drive-row-activity { grid-area: activity; display: flex; gap: 8px; font-size: 11px; white-space: nowrap; }
-.drive-row-activity strong { display: inline-block; min-width: 9ch; font-weight: 600; text-align: end; }
-
 @media (max-width: 480px) {
-  .drive-row {
-    grid-template-columns: 30px minmax(0, 1fr) auto;
-    grid-template-areas: "letter name free" "letter meter used" ". activity activity";
-  }
   .settings-drive small { display: none; }
 }
 

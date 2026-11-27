@@ -104,10 +104,13 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
   **Live rates** (stacked R/W with fixed-width values and units), **Activity marks** (cyan read above
   pink write, bright with activity), or **None** (capacity only, the default).
   The hover tooltip lists free space for each drive and explains the marks when shown. Clicking toggles the popup.
-- **Storage popup** (`storage-activity`, 576 × 470): total free and total capacity,
-  the fullest drive, and one row per drive (letter badge, volume label, file system,
-  "N free of M", a horizontal used bar, used %, live read and write speeds regardless of its bar mode).
-  **Clicking a row opens that drive in File Explorer** and closes the popup.
+- **Storage popup** (`storage-activity`, 576 × 470): a compact summary strip and a two-column grid
+  of all visible drives, with navy panels and chamfered corners. Each tile shows capacity, live
+  speeds, and its own cyan read and pink write history chart. The charts use the same history
+  window and throughput scale, shown once above the grid. One drive spans both columns and gets
+  a taller chart. Six drives fit at the default size. The grid scrolls for more drives or shorter
+  windows, and stacks in one column at narrow widths. **Clicking a tile opens that drive in File
+  Explorer** and closes the popup.
 - **History of this design:** the first version (2026-11-27) put six loose `C | 947 GB` items on the bar.
   It looked out of place next to the framed cards, the thin bar read like a text cursor, and it was
   the widest group on the bar. It was replaced with the card and popup above.
@@ -116,7 +119,8 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
   B/s through TB/s, with up to three significant digits, `0 B/s` for idle and `—` for unavailable.
 - **Colours:** blue normally, amber at ≥ 85% used, red at ≥ 95% used, on the card bars, the row bars and the letters.
 - **Data:** both views get capacity from Zebar's built-in `disk` provider every 60 s and read/write
-  rates from the existing one-second collector feed. The popup requests only the latest sample.
+  rates from the one-second collector feed. The popup requests the selected history window using
+  `view=drives` and plots gaps when a reading is missing.
 - **Opening Explorer:** the popup calls `shellSpawn('C:\Windows\explorer.exe', ['D:\'])`. The
   widget's zpack privilege allows only that program with `argsRegex` `^[A-Z]:\\$` (JSON: `"^[A-Z]:\\\\$"`) (one drive
   root). Checked: the `explorer.exe` that Zebar starts hands off to Windows' COM Explorer
@@ -196,6 +200,8 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 
 ## Backups
 
+- `.glzr\zebar\cpu-activity\dist.before-disk-history-20261127-210028` and
+  `zebar-cpu-collector.exe.before-disk-history-20261127-210028`: assets and collector before disk history.
 - `.glzr\zebar\cpu-activity\dist.before-drive-meter-contrast-20261127-203606`: installed assets before the bar meter contrast change.
 - `.glzr\zebar\cpu-activity\dist.before-disk-activity-20261127-202906` and
   `zebar-cpu-collector.exe.before-disk-activity-20261127-202906`: installed assets and collector before disk activity.
@@ -211,6 +217,12 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 Newest first. Covers the whole pack, front end and collector.
 
 ### 2026-11-27
+- **Added disk activity history to the Storage popup.** `src/storage-panel.tsx`, `src/storage.css` and
+  `src/drive-history-graph.tsx` render the adaptive grid. `src/history-graph.tsx` shares canvas setup,
+  and `src/metrics-feed.ts` requests the disk history view of the existing feed. The [collector](zebar-collector.md)
+  retains the one-second samples. Browser checks covered one full-width drive, six drives without scrolling,
+  eight drives with a fixed header and scrolling, narrow windows, both traces, settings changes, and Explorer.
+  Deployed the pack and collector and verified live disk history for all six drives.
 - **Brightened the background track on the bar's drive meters** in `src/widget.css` so partially filled
   drives show the same full height as a nearly full drive. Verified equal 20 px tracks and red fill on
   the nearly full meter in the browser. Deployed the rebuilt assets and verified the Zebar restart.

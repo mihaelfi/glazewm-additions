@@ -6,13 +6,7 @@ const colors = {
   gpu: { line: '#9bd66f', dot: '#d6f7bd', fillTop: '#8fcf6366', fillBottom: '#8fcf630b' },
 };
 
-export function HistoryGraph(props: {
-  values: (number | undefined)[];
-  /** Seconds the x axis covers; values fill it from the right. */
-  length: number;
-  tone: keyof typeof colors;
-  compact?: boolean;
-}) {
+export function useHistoryCanvas(draw: (context: CanvasRenderingContext2D, width: number, height: number) => void) {
   let canvas!: HTMLCanvasElement;
   const [bounds, setBounds] = createSignal({ width: 0, height: 0 });
 
@@ -26,7 +20,6 @@ export function HistoryGraph(props: {
 
   createEffect(() => {
     const { width, height } = bounds();
-    const values = props.values;
     if (!width || !height) return;
 
     const scale = window.devicePixelRatio || 1;
@@ -38,7 +31,21 @@ export function HistoryGraph(props: {
     if (!context) return;
     context.setTransform(scale, 0, 0, scale, 0, 0);
     context.clearRect(0, 0, width, height);
+    draw(context, width, height);
+  });
 
+  return (element: HTMLCanvasElement) => { canvas = element; };
+}
+
+export function HistoryGraph(props: {
+  values: (number | undefined)[];
+  /** Seconds the x axis covers; values fill it from the right. */
+  length: number;
+  tone: keyof typeof colors;
+  compact?: boolean;
+}) {
+  const canvas = useHistoryCanvas((context, width, height) => {
+    const values = props.values;
     const margin = props.compact ? 2 : 4;
     const bottom = height - margin;
     const span = width - margin * 2;
