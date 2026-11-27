@@ -20,7 +20,7 @@ with providers and actions around it.
   place of the results, filterable by typing, with submenus; Enter runs the default. Providers build `ResultAction`s on
   demand, with shared sets in `ResultActions.cs`; Ctrl+Enter, Shift, Ctrl+1…9 and `@N` are ordinary actions with
   shortcuts. See `docs/launcher.md` (Result actions). Not yet checked with the real keyboard and mouse (only through the pipe).
-- **Launcher supervisor: come back after a crash** · `idea` · M. Needed once the launcher also owns the workspace keys.
+- **Launcher supervisor: come back after a crash** · `done` 2026-11-27 (all three layers below).
   Layers, cheapest first:
   1. `done` 2026-11-27. In the launcher: log UI-thread errors and keep running; on a background crash or a burst of UI
      errors, start a replacement before exiting (not within the first 60 s). Covers managed .NET crashes.
@@ -186,9 +186,20 @@ Items:
   (`\LogicalDisk(*)\Disk Read Bytes/sec` and `Disk Write Bytes/sec`) with the same PDH code the GPU uses, keyed by drive letter so it
   lines up with the storage card. To discuss: what goes on the bar (keep free space only, or add an activity hint) and what the popup
   shows (read/write graphs per drive, or a drive × time heatmap like the CPU one).
+  The user's ask (2026-11-27): r/w speeds per drive in the drive indicator, padded to a fixed width so the bar doesn't shift as
+  the numbers change; or a small graph per drive instead, so there's history.
 - **Space map, TreeSize-style** · `idea` · L. A separate helper program (not the collector: scanning terabytes is heavy and runs on
   demand) that scans a drive, caches the result and shows where the space goes at a glance. Scan options to weigh: reading the NTFS
   master file table directly (very fast, needs admin) or ordinary directory listing (no admin, slower).
+  Discussed with Codex (2026-11-27), not yet agreed in full:
+  - **Leave external USB drives alone for now** (the user's decision: they're touchy as it is). Only internal drives on an explicit
+    allowlist of volume IDs are scanned or watched, even if Windows gives a USB drive a different letter.
+  - **The helper runs only on demand.** "Analyze" on an allowed drive in the Storage popup starts the Rust helper in the background
+    for that drive only. Opening the popup or starting Windows never launches it.
+  - **Results are saved** (SQLite was proposed). Later visits show them at once with a "Last updated" time; Refresh starts a new scan.
+  - **While the analyzer is open,** the helper can watch the selected drive and batch changes, then exit once it's closed.
+  - **Measure before adding complexity.** Time to the first useful breakdown, cached navigation speed, and disk activity during a
+    scan decide whether NTFS journal-based updates are worth it.
 
 ## Zebar: network
 
