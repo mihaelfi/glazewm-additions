@@ -1,7 +1,7 @@
 # GlazeLauncher: workspace-aware app launcher
 
-Read this when you work on the launcher (`launcher/`) or its supervisor (`supervisor/`). Ideas and bugs, including the planned
-actions framework, are in [`backlog.md`](backlog.md#launcher).
+Read this when you work on the launcher (`launcher/`) or its supervisor (`supervisor/`). Ideas and bugs are in
+[`backlog.md`](backlog.md#launcher). New "do something with this result" features are result actions (see Result actions).
 
 A resident WPF (.NET 10) app in `C:\codex\glazewm\launcher\`, installed to `%USERPROFILE%\.glzr\launcher\`,
 data in `%LOCALAPPDATA%\GlazeLauncher\`. It replaces PowerToys Run on Alt+Space
@@ -30,6 +30,56 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
   the monitor you were on when you opened the launcher (`@3` → `13` on the primary monitor, `23` on the next one), the same
   rule as Alt+N; two digits (`@23`) are taken literally. The launcher also opens on that monitor. By default your view follows the window; hold **Shift** to stay where you are
   (Hyprland's "silent"). The chip at the right of the search box shows the target (`→ ws 13`).
+- **Store suggestions never show.** Only apps installed for this user are results; Windows Search's Store ads for apps you
+  don't have (Netflix and the like) are filtered out with the Store stubs (checked 2026-11-27: `netflix` finds nothing).
+
+## Result actions
+
+Every result has a list of actions. **Enter** runs the first (the default). **Ctrl+K**, or **→** with the caret at the end
+of the query, opens the list for the selected result in place of the results; the search box shows the result as a chip
+(`[icon] Claude › Move to workspace`) and filters the list as you type. Enter runs the selected action, → or Enter opens a
+submenu (`›`), ← (empty filter) or Esc goes back a level, and Esc on the results closes the launcher. The footer under
+the results is built from the selected result's actions: the default, Ctrl+K, and every action with a shortcut.
+
+| Result | Actions (shortcut) |
+|---|---|
+| App | Focus open window / Focus next open window, or Open (↵) · Open new window (Ctrl+↵, when open) · Open on workspace › (Ctrl+1–9, +Shift stay) · Open file location (Win32 apps only) |
+| Window | Focus window (↵) · Bring to this workspace (Ctrl+↵, when elsewhere) · Move to workspace › (Ctrl+1–9, +Shift stay) · Open file location · Close window (Ctrl+W) · End task |
+| With `@N` in the query | App: Open on workspace N (↵, Shift+↵ stay); window: Move to workspace N (↵, Shift+↵ stay) |
+| Folder, command, go to workspace, browser tab | One default action each |
+
+- **Shortcuts work without opening the list:** a Ctrl chord is looked up in the selected result's actions and their
+  submenus, so Ctrl+3 runs "Move to workspace 13". Shift added to a shortcut runs the action's "stay here" variant.
+  A Ctrl+Enter or Shift+Enter that matches nothing falls back to the default (as before).
+- **Move / Open on workspace ›** lists slots 1–9 of the monitor you're on, with what's on each (`chrome, Signal`, `empty`,
+  `current`).
+- **Close window** asks the window to close (GlazeWM `close`, or `WM_CLOSE` without GlazeWM), so the app may ask to save.
+- **End task** kills the window's process. It has no shortcut: the first Enter in the list turns the row into "Press ↵
+  again to end X.exe (unsaved work is lost)", the second runs it, and any other key cancels. It refuses the launcher's own
+  process; elevated processes fail (logged).
+- **Open file location** runs `explorer /select,` on the app's target exe or the window's exe. It isn't offered for
+  packaged apps (their files are in `WindowsApps`, which Explorer can't open).
+- Close, End task and Open file location don't count towards frecency; workspace actions record usage for the target workspace.
+
+## Settings file
+
+`%LOCALAPPDATA%\GlazeLauncher\settings.json` (`Settings.cs`). **Plumbing only:** nothing reads the values yet.
+
+```json
+{
+  "version": 1,
+  "hotkey": "Alt+Space",
+  "aliases": { "codex": "app:<AppsFolder ID>" },
+  "indexedFolders": [ { "path": "C:/launcher shortcuts", "badge": "Shortcut" } ]
+}
+```
+
+- Alias targets are a result's usage key (`app:…`, `folder:…`), the same IDs `usage.json` uses.
+- Written with defaults when missing. Reading allows comments and trailing commas. Keys this build doesn't know are kept
+  on save (`[JsonExtensionData]`).
+- Edits by hand are picked up by a file watcher (300 ms debounce; the launcher's own writes are ignored). A file with a
+  JSON error is logged and left alone: the last good settings stay, and `SettingsStore.Update` refuses to save until it's fixed.
+- Saves are atomic (temp file, then replace).
 
 ## Workspace manager
 
@@ -83,16 +133,18 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
 | `KnownFolder.cs` | Resolves the standard per-user folder IDs with `SHGetKnownFolderPath` and publishes the folders Windows can resolve |
 | `Search.cs` | Query parsing (`@N`), fuzzy match tiers and character positions, merged ranking, shared result model, `WindowIdentity` |
 | `SearchProviders.cs` | `ISearchProvider` contract and the compiled-in app, window, folder, command and go-to-workspace providers. A `Pinned` result is shown above all ranked results |
+| `ResultActions.cs` | `ResultAction` (title, glyph, callback, optional shortcut, submenu, flags, Shift variant), `KeyChord`, `ActionContext` (snapshot + resolved `@N`), and `ActionKits`: the shared app, window and workspace-slot action sets providers compose |
+| `Settings.cs` | `LauncherSettings` and `SettingsStore`: load, watch, atomic save of `settings.json` |
 | `BrowserTabSearchProvider.cs` | Refreshes the Chrome and Edge tab cache on a background thread using only their accessibility tab strips. Selects a tab by its runtime ID within the original browser window. |
-| `Actions.cs` | Launch / focus / move. Open app and window results share a focus path that runs `focus --workspace N` for hidden workspaces, restores a minimized window (Win32 `SW_RESTORE`, then waits up to 600 ms for GlazeWM to stop reporting it as minimized, because focusing it earlier leaves GlazeWM's focus on the previous window), then runs `focus --container-id`. After an `@N` launch, the next matching `window_managed` window (within 15 s) gets `move --workspace N` and uses the same focus path if following. |
+| `Actions.cs` | What actions do: `Run` (records frecency, logs failures), launch, `LaunchOn`, `FocusOrCycle`, `MoveWindow`, `CloseWindow`, `EndTask`, `ShowInExplorer`, commands. Open app and window results share a focus path that runs `focus --workspace N` for hidden workspaces, restores a minimized window (Win32 `SW_RESTORE`, then waits up to 600 ms for GlazeWM to stop reporting it as minimized, because focusing it earlier leaves GlazeWM's focus on the previous window), then runs `focus --container-id`. After an `@N` launch, the next matching `window_managed` window (within 15 s) gets `move --workspace N` and uses the same focus path if following. |
 | `IconCache.cs` | Windows Shell icons (`IShellItemImageFactory`, 48px, alpha kept) loaded on the STA thread. Known folders use `SHGetKnownFolderItem` first, and the cache warms folder icons before app icons at startup. |
 | `UsageStore.cs` | Frecency (half-life 10 days), global and per workspace, saved to `usage.json` |
-| `MainWindow.xaml(.cs)` | UI (bar palette `#151b30` / `#b6acff`, DWM rounded corners), keys, placement |
+| `MainWindow.xaml(.cs)` | UI (bar palette `#151b30` / `#b6acff`, DWM rounded corners), keys, placement, and the action list (levels, filter, confirm, shortcut lookup). `ActionRow` is one row of the list |
 | `HighlightedTextBlock.cs` | Renders matching characters as WPF runs and keeps Unicode text elements intact |
 | `Native.cs`, `Infrastructure.cs` | Win32 interop; the shared background STA worker |
 
 - **Matching a window to an app.** An app's IDs are its AppsFolder ID (an AUMID or a path), its exe name, its name with spaces removed, and for packaged apps the family name plus a small alias table (`PackagedProcessAliases`: Terminal, Notepad, Calculator, Paint). A window's IDs are its process name, its process's packaged AUMID (`GetApplicationUserModelId`), and its window AUMID (`PKEY_AppUserModel_ID`). They match if the two sets share any ID. Squirrel apps (Discord) point at `Update.exe`, which is ignored; the name match covers them.
-- **Adding a provider.** Register it in `App.xaml.cs`. Search reads a cached snapshot and returns `ProviderResult` entries with a stable ID, match, optional hosting `WmWindow`, display fields, and an async activation callback. The engine ranks results centrally and the UI renders the supplied icon, text and key hints. Providers with `IRefreshableSearchProvider` update their cache asynchronously when the launcher opens. The browser provider uses the hosting window for workspace ranking and `Actions.FocusWindow` before selecting the tab. The tab cache holds titles and runtime IDs in memory, and frecency stores one key per browser.
+- **Adding a provider.** Register it in `App.xaml.cs`. Search reads a cached snapshot and returns `ProviderResult` entries with a stable ID, match, optional hosting `WmWindow`, display fields, and an `Actions` function. That function is only called for the selected result (footer, Enter, a shortcut, the list), so a search allocates no actions; reuse `ActionKits` where it fits and `ActionKits.Single` for one action. The engine ranks results centrally and the UI renders the supplied icon, text and key hints. Providers with `IRefreshableSearchProvider` update their cache asynchronously when the launcher opens. The browser provider uses the hosting window for workspace ranking and `Actions.FocusWindow` before selecting the tab. The tab cache holds titles and runtime IDs in memory, and frecency stores one key per browser.
 - **Launching** uses ShellExecute on `shell:AppsFolder\<id>`, which works for Win32 and Store apps alike.
 - **Detached relaunch:** started without `--detached`, the exe relaunches itself through ShellExecute (no handle inheritance) and exits. That's the same protection the Zebar collector has against keeping a parent's sockets alive.
 - **Supervisor** (`supervisor/main.rs`, Rust, `GlazeSupervisor.exe`, about 180 KB and 1 MB private memory). GlazeWM starts
@@ -124,7 +176,9 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
   - Doesn't cover native crashes, hangs or being killed on this PC; the supervisor does.
 - **Command line:** `GlazeLauncher.exe --toggle|--show|--hide|--reindex|--sync|--quit` forwards the command to the running instance over the pipe. With no argument a second start toggles.
 - **Debug pipe commands** (send them with a `NamedPipeClientStream` to `GlazeLauncher`, not available as exe flags): `query:<text>` types a query,
-  `enter`, `enter:ctrl` or `enter:shift` activates the selection, and `snapshot` renders the window to `%LOCALAPPDATA%\GlazeLauncher\snapshot.png`.
+  `enter`, `enter:ctrl` or `enter:shift` runs what Enter would (nothing while hidden), `actions` opens the
+  action list (Ctrl+K), `back` goes back a level, `key:<chord>` presses a key through the normal key handling (`key:ctrl+shift+3`,
+  `key:ctrl+w`, `key:right`, `key:escape`; while the list is open, `query:` sets its filter), and `snapshot` renders the window to `%LOCALAPPDATA%\GlazeLauncher\snapshot.png`.
   `ws:focus:N` and `ws:move:N` run the Alt+N and Alt+Shift+N actions (they use the current foreground window, so make
   sure the right window is in front). For crash-recovery tests: `debug:throw` raises an error on the UI thread, and `debug:crash` crashes a background thread
   (the launcher really ends; a replacement starts only after the first 60 s). `debug:hang` blocks the UI thread for 30 s,
@@ -165,6 +219,8 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
   may need an entry in `PackagedProcessAliases`.
 - Browser tab search depends on the tab controls Chrome and Edge expose through accessibility. Fullscreen and collapsed tab groups have not been checked.
 - Minimized windows are sometimes missing from results (needs a repro). Tracked in the backlog.
+- **Result actions were checked through the pipe only** (`key:`, `enter`, `actions`). Not yet checked: the real keyboard
+  (Ctrl+K, →, Ctrl+W, Ctrl+1…9), mouse clicks on action rows, and Shift-click.
 - **The workspace keys need the launcher.** The supervisor restarts it after any crash at once and after a hang in about
   11 s; keys pressed in between do nothing. If the supervisor itself isn't running (Quit, or it was never started), a
   crash leaves the keys dead until GlazeWM is restarted or the supervisor is started again.
@@ -192,12 +248,35 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-crash-recovery-20261127-182352\`: before crash recovery
 - `.glzr\launcher\before-workspace-manager-20261127-185520\`: before the workspace manager
 - `.glzr\launcher\before-supervisor-20261127-192822\`: before the supervisor
+- `.glzr\launcher\before-result-actions-20261127-194948\`: before result actions and the settings file
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-27
+- **Added result actions and the settings file.** New `ResultActions.cs` (`ResultAction`, `KeyChord`, `ActionContext`,
+  `ActionKits` with app, window and workspace-slot actions) and `Settings.cs` (`LauncherSettings`, `SettingsStore`).
+  `ResultItem` (`Search.cs`) lost `Activate`, `FooterText` and `SupportsWorkspaceTarget` and gained `Actions`; every
+  provider (`SearchProviders.cs`, `BrowserTabSearchProvider.cs`) now supplies actions, and footers are built from them.
+  `Actions.cs` replaced `ActivateOptions` with explicit methods and added Close, End task and Open file location
+  (`Native.cs`: `PostMessage`, `WM_CLOSE`). `MainWindow.xaml(.cs)` shows the action list in place of the results with a
+  chip in the search box, submenus, filtering, the End task confirmation and the shortcut lookup; `App.xaml` adds
+  `DangerBrush`. `App.xaml.cs` loads and watches the settings and adds the `actions`, `back` and `key:` pipe commands.
+  Design agreed with the user first (Ctrl+K and → open the list; same window; providers own their actions).
+  Published and installed through the supervisor.
+  - Checked through the pipe on throwaway windows: filter + submenu; Ctrl+Shift+7 moved a window to 27 and stayed on 22;
+    Ctrl+3 moved one to 23 and followed; Ctrl+Enter brought one from 27 to 22; Ctrl+W closed one normally (its close
+    handler ran); End task armed on the first Enter (process alive) and killed it on the second (no close handler).
+    Open file location on Chrome opened Explorer in its Application folder, and Ctrl+W closed that Explorer window.
+    → opened the actions and then the submenu, ← ← went back to the results with the query and selection restored, Ctrl+K
+    then Esc Esc closed the launcher. `notepad @7` made "Move to workspace 27" the default with a Shift "stay here" variant.
+    `netflix` finds nothing (Store ads stay filtered).
+  - Settings checked with a harness on a temp file (defaults written, hand edit with comments loaded, broken JSON kept the
+    last good settings and blocked saving, unknown keys kept, own writes not reloaded). The installed launcher wrote the
+    default file on its first start.
+  - Fixed during testing: the pipe's `enter` acted on the stale selection while the launcher was hidden.
+  - Not yet checked: see Known issues.
 - **Added GlazeSupervisor**, a small Rust watcher in the new `supervisor/` folder, installed next to the launcher. GlazeWM now
   starts it, and it starts the launcher with `--supervised`, restarts it after a crash or a kill (with backoff), ends and
   restarts it when Windows reports it hung, and exits when the launcher quits normally. In supervised mode, `App.xaml.cs`

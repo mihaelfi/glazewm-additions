@@ -2,16 +2,7 @@ using System.Diagnostics;
 
 namespace GlazeLauncher;
 
-/// <summary>How a result was activated.</summary>
-internal readonly record struct ActivateOptions(
-    /// <summary>Workspace name to send the app/window to (already resolved), or null.</summary>
-    string? TargetWorkspace,
-    /// <summary>Ctrl: for apps, start a new instance even if one is open; for windows, bring it here.</summary>
-    bool Alternate,
-    /// <summary>Shift: with a target workspace, stay on the current one (Hyprland's "silent").</summary>
-    bool Stay);
-
-/// <summary>Runs the action for a result: launch, focus, move, or a command.</summary>
+/// <summary>The things result actions do: launch, focus, move, close, or run a command.</summary>
 internal sealed class Actions
 {
     private static readonly TimeSpan PendingTimeout = TimeSpan.FromSeconds(15);
@@ -33,49 +24,46 @@ internal sealed class Actions
 
     public event Action<string>? InternalCommand;
 
-    public async Task Activate(ResultItem item, ActivateOptions opt, WmSnapshot wm)
+    /// <summary>Runs one of a result's actions and records it for frecency.</summary>
+    public async Task Run(ResultItem item, ResultAction action, WmSnapshot wm)
     {
-        var currentWs = wm.FocusedWorkspace?.Name;
-        _usage.Record(item.UsageKey, opt.TargetWorkspace ?? currentWs);
+        if (action.Run is null) return;
+        if (!action.Flags.HasFlag(ActionFlags.NoUsage))
+            _usage.Record(item.UsageKey, action.UsageWorkspace ?? wm.FocusedWorkspace?.Name);
+        Log.Info($"action '{action.Title}' on {item.UsageKey}");
 
         try
         {
-            await item.Activate(opt, wm);
+            await action.Run();
         }
         catch (Exception e)
         {
-            Log.Error($"activate {item.UsageKey}", e);
+            Log.Error($"action '{action.Title}' on {item.UsageKey}", e);
         }
     }
 
-    public async Task ActivateApp(AppEntry app, IReadOnlyList<WmWindow> runningWindows, ActivateOptions opt, WmSnapshot wm)
+    /// <summary>Focuses an app's open window; repeated use cycles through its windows,
+    /// starting with the ones on the current workspace.</summary>
+    public Task FocusOrCycle(IReadOnlyList<WmWindow> runningWindows, WmSnapshot wm)
     {
-        // Already open and no workspace given: focus it instead of starting another copy.
-        // Repeated activation cycles through its windows.
-        if (opt.TargetWorkspace is null && !opt.Alternate && runningWindows.Count > 0)
-        {
-            var windows = runningWindows
-                .OrderBy(w => w.WorkspaceName == wm.FocusedWorkspace?.Name ? 0 : 1)
-                .ToList();
-            int focused = windows.FindIndex(w => w.HasFocus);
-            var next = windows[(focused + 1) % windows.Count];
-            await FocusWindow(next);
-            return;
-        }
+        var windows = runningWindows
+            .OrderBy(w => w.WorkspaceName == wm.FocusedWorkspace?.Name ? 0 : 1)
+            .ToList();
+        int focused = windows.FindIndex(w => w.HasFocus);
+        return FocusWindow(windows[(focused + 1) % windows.Count]);
+    }
 
-        if (opt.TargetWorkspace is { } ws)
-        {
-            bool follow = !opt.Stay;
-            lock (_pending) _pending.Add(new PendingLaunch(app, ws, follow, DateTime.UtcNow + PendingTimeout));
-            // Following: switch first so the window opens in place; the pending move is a fallback for
-            // apps that take long to start, or if focus wandered off in the meantime.
-            if (follow && _glaze.IsConnected) await TryCommand($"focus --workspace {ws}");
-        }
-
+    /// <summary>Starts the app and sends its next new window to a workspace.</summary>
+    public async Task LaunchOn(AppEntry app, string workspace, bool follow)
+    {
+        lock (_pending) _pending.Add(new PendingLaunch(app, workspace, follow, DateTime.UtcNow + PendingTimeout));
+        // Following: switch first so the window opens in place; the pending move is a fallback for
+        // apps that take long to start, or if focus wandered off in the meantime.
+        if (follow && _glaze.IsConnected) await TryCommand($"focus --workspace {workspace}");
         Launch(app);
     }
 
-    private static void Launch(AppEntry app)
+    public void Launch(AppEntry app)
     {
         Log.Info($"launch {app.Name} ({app.Id})");
         OpenShellItem(app.IconPath);
@@ -90,16 +78,51 @@ internal sealed class Actions
         })?.Dispose();
     }
 
-    public async Task ActivateWindow(WmWindow w, ActivateOptions opt, WmSnapshot wm)
+    /// <summary>Moves a window to a workspace; following switches there and focuses it.</summary>
+    public async Task MoveWindow(WmWindow w, string workspace, bool follow)
     {
-        string? destination = opt.TargetWorkspace ?? (opt.Alternate ? wm.FocusedWorkspace?.Name : null);
         bool moved = false;
-        if (destination is not null && destination != w.WorkspaceName)
+        if (workspace != w.WorkspaceName) moved = await TryCommand($"move --workspace {workspace}", w.Id);
+        if (follow) await FocusWindow(w, moved ? workspace : null);
+    }
+
+    /// <summary>Asks the window to close, as its close button would (the app may ask to save).</summary>
+    public async Task CloseWindow(WmWindow w)
+    {
+        if (_glaze.IsConnected && await TryCommand("close", w.Id)) return;
+        var hwnd = new IntPtr(w.Handle);
+        if (Native.IsWindow(hwnd)) Native.PostMessage(hwnd, Native.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    /// <summary>Ends the window's process, like Task Manager's End task.</summary>
+    public void EndTask(WmWindow w)
+    {
+        var hwnd = new IntPtr(w.Handle);
+        if (!Native.IsWindow(hwnd)) { Log.Info($"end task: window {w.Id} is gone"); return; }
+        Native.GetWindowThreadProcessId(hwnd, out uint pid);
+        if (pid == 0 || pid == Environment.ProcessId) { Log.Info($"end task: refused for pid {pid}"); return; }
+        try
         {
-            moved = await TryCommand($"move --workspace {destination}", w.Id);
-            if (opt.Stay) return;
+            using var process = Process.GetProcessById((int)pid);
+            Log.Info($"end task: {process.ProcessName} (pid {pid})");
+            process.Kill();
         }
-        await FocusWindow(w, moved ? destination : null);
+        catch (Exception e)
+        {
+            // Elevated processes can't be opened from here; that's expected.
+            Log.Info($"end task: pid {pid} failed: {e.Message}");
+        }
+    }
+
+    /// <summary>A full file path outside WindowsApps: Explorer can't select items in packaged apps' folders.
+    /// No disk access, because the footer builds actions on every selection change.</summary>
+    public static bool CanShowInExplorer(string path) =>
+        Path.IsPathFullyQualified(path) && !path.Contains(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Opens Explorer with the file selected. ShellExecute, so no handles are inherited.</summary>
+    public static void ShowInExplorer(string path)
+    {
+        Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true })?.Dispose();
     }
 
     public async Task FocusWindow(WmWindow w, string? destination = null)

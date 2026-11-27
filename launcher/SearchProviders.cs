@@ -9,7 +9,7 @@ internal readonly record struct SearchContext(
 /// <param name="Pinned">Shown above every ranked result, e.g. the action a query asks for directly.</param>
 internal readonly record struct ProviderResult(ResultItem Item, TextMatch Match, WmWindow? TargetWindow = null, bool Pinned = false);
 
-/// <summary>Searches data already in memory. Each result supplies its own activation action.</summary>
+/// <summary>Searches data already in memory. Each result supplies its own actions (see ResultActions.cs).</summary>
 internal interface ISearchProvider
 {
     int Priority { get; }
@@ -62,10 +62,7 @@ internal sealed class AppSearchProvider(ShellIndex index, WindowIdentity identit
                 Badge = badge,
                 UsageKey = app.UsageKey,
                 IconPath = app.IconPath,
-                FooterText = running.Count > 0
-                    ? "↵ focus open window   Ctrl+↵ new window   Ctrl+1‒9 open on workspace (+Shift: stay)   Esc close"
-                    : "↵ open   Ctrl+1‒9 or @N open on workspace (+Shift: stay)   Esc close",
-                Activate = (options, wm) => actions.ActivateApp(app, running, options, wm),
+                Actions = ctx => ActionKits.App(actions, app, running, ctx),
             }, match);
         }
     }
@@ -129,8 +126,7 @@ internal sealed class WindowSearchProvider(WindowIdentity identity, Actions acti
                 Badge = "ws " + context.Wm.LabelFor(window.WorkspaceName),
                 UsageKey = "win:" + window.ProcessName,
                 IconPath = identity.ExePath(window),
-                FooterText = "↵ focus   Ctrl+↵ bring here   Ctrl+1‒9 or @N move to workspace (+Shift: stay)   Esc close",
-                Activate = (options, wm) => actions.ActivateWindow(window, options, wm),
+                Actions = ctx => ActionKits.Window(actions, window, identity.ExePath(window), ctx),
             }, match, window);
         }
     }
@@ -159,13 +155,11 @@ internal sealed class FolderSearchProvider(ShellIndex index) : ISearchProvider
                 IconPath = folder.Path,
                 IconFolderId = folder.Id,
                 UsageKey = id,
-                FooterText = "↵ open in File Explorer   Esc close",
-                SupportsWorkspaceTarget = false,
-                Activate = (_, _) =>
+                Actions = ActionKits.Single("Open in File Explorer", "\uE838", () =>
                 {
                     Actions.OpenShellItem(folder.Path);
                     return Task.CompletedTask;
-                },
+                }),
             }, match);
         }
     }
@@ -192,9 +186,7 @@ internal sealed class WorkspaceSearchProvider(Actions actions) : ISearchProvider
                 : "GlazeWM · switch workspace",
             Glyph = "",
             UsageKey = "cmd:Go to workspace",
-            FooterText = "↵ go to workspace   ↓ pick a window or app to send there   Esc close",
-            // Enter, Ctrl+1‒9 and a click all arrive with the resolved target workspace.
-            Activate = (options, _) => actions.GoToWorkspace(options.TargetWorkspace ?? workspace),
+            Actions = ActionKits.Single($"Go to workspace {label}", "\uE7C4", () => actions.GoToWorkspace(workspace)),
         }, default, Pinned: true);
     }
 }
@@ -233,8 +225,7 @@ internal sealed class CommandSearchProvider(Actions actions) : ISearchProvider
                 Subtitle = command.Subtitle,
                 Glyph = command.Glyph,
                 UsageKey = command.UsageKey,
-                FooterText = "↵ run   Esc close",
-                Activate = (_, _) => actions.RunCommand(command),
+                Actions = ActionKits.Single("Run", command.Glyph, () => actions.RunCommand(command)),
             }, match);
         }
     }

@@ -52,9 +52,7 @@ internal sealed class BrowserTabSearchProvider(GlazeClient glaze, WindowIdentity
                 UsageKey = "browser-tabs:" + host.ProcessName.ToLowerInvariant(),
                 IconPath = identity.ExePath(host),
                 Glyph = "\uE774",
-                FooterText = "↵ switch to tab   Esc close",
-                SupportsWorkspaceTarget = false,
-                Activate = (_, _) => ActivateTabAsync(tab),
+                Actions = ActionKits.Single("Switch to tab", "\uE774", () => ActivateTabAsync(tab)),
             }, match, host);
         }
     }

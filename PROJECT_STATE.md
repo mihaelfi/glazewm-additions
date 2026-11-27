@@ -57,7 +57,7 @@ Each area doc has its current state, known issues, backups and its own change lo
 | Launcher source | `C:\codex\glazewm\launcher\` | WPF, .NET 10 (`GlazeLauncher.csproj`) |
 | Supervisor source | `C:\codex\glazewm\supervisor\` | Rust (`GlazeSupervisor.exe`); restarts the launcher after a crash or hang |
 | Installed launcher | `%USERPROFILE%\.glzr\launcher\` | Published output plus `GlazeSupervisor.exe`; GlazeWM starts the supervisor from here |
-| Launcher data | `%LOCALAPPDATA%\GlazeLauncher\` | `launcher.log`, `supervisor.log`, `usage.json` (frecency), `workspace-merges.json`, `snapshot.png` (debug) |
+| Launcher data | `%LOCALAPPDATA%\GlazeLauncher\` | `launcher.log`, `supervisor.log`, `settings.json` (launcher settings), `usage.json` (frecency), `workspace-merges.json`, `snapshot.png` (debug) |
 
 Versions: GlazeWM 3.10.1, Zebar 3.3.1 (npm `zebar@3.3.1`), `glazewm@1.7.0` JS client, Solid 1.9, Vite 7, .NET SDK 10.0.115 (desktop runtime 10.0.15).
 

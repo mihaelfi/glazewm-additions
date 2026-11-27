@@ -19,9 +19,8 @@ internal sealed class ResultItem : INotifyPropertyChanged
     public string Badge { get; init; } = "";
     public string Glyph { get; init; } = "";
     public required string UsageKey { get; init; }
-    public required Func<ActivateOptions, WmSnapshot, Task> Activate { get; init; }
-    public required string FooterText { get; init; }
-    public bool SupportsWorkspaceTarget { get; init; } = true;
+    /// <summary>What this result can do, built on demand. The first action is the default (Enter).</summary>
+    public required Func<ActionContext, IReadOnlyList<ResultAction>> Actions { get; init; }
     public string? IconPath { get; init; }
     public Guid? IconFolderId { get; init; }
     public int? SubtitleMatchStart { get; init; }

@@ -15,6 +15,7 @@
     <SolidColorBrush x:Key="TextBrush" Color="#E6E8F2"/>
     <SolidColorBrush x:Key="MutedBrush" Color="#8A90B0"/>
     <SolidColorBrush x:Key="BadgeBrush" Color="#262D50"/>
+    <SolidColorBrush x:Key="DangerBrush" Color="#FF8FA3"/>
     <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
   </Application.Resources>

@@ -32,6 +32,7 @@ public partial class App : Application
     private WorkspaceManager? _workspaces;
     private GlazeClient? _glaze;
     private UsageStore? _usage;
+    private SettingsStore? _settings;
     private ShellIndex? _shellIndex;
     private readonly CancellationTokenSource _cts = new();
 
@@ -103,6 +104,10 @@ public partial class App : Application
         var shellIndex = _shellIndex = new ShellIndex(sta);
         _usage = new UsageStore();
         _usage.Load();
+        // Settings plumbing only: nothing reads the values yet (aliases, indexed folders and the hotkey are later steps).
+        _settings = new SettingsStore();
+        _settings.Load();
+        _settings.Watch();
         _glaze = new GlazeClient();
         var identity = new WindowIdentity();
         var actions = new Actions(_glaze, _usage, identity);
@@ -310,6 +315,10 @@ public partial class App : Application
             case "snapshot": _window?.SaveSnapshot(Paths.File("snapshot.png")); break;
             case var q when q.StartsWith("query:", StringComparison.Ordinal): _window?.SetQuery(q[6..]); break;
             case "enter" or "enter:ctrl" or "enter:shift": _window?.DebugEnter(command.EndsWith("ctrl"), command.EndsWith("shift")); break;
+            // Debug helpers (pipe only): open the selected result's action list (Ctrl+K) and go back a level.
+            case "actions": _window?.DebugActions(); break;
+            case "back": _window?.DebugBack(); break;
+            case var k when k.StartsWith("key:", StringComparison.Ordinal): _window?.DebugKey(k[4..]); break;
             // Crash-handling tests (pipe only): an error on the UI thread, which is logged and skipped,
             // and one on a background thread, which ends the process like a real crash.
             case "debug:throw":
@@ -340,6 +349,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _usage?.Save();
+        _settings?.Dispose();
         _mutex?.Dispose();
         base.OnExit(e);
     }

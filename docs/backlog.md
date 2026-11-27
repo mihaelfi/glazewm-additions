@@ -16,10 +16,10 @@ with providers and actions around it.
 
 ### Foundations
 
-- **Result actions** · `idea` · M. Every result offers a list of actions; Enter runs the default, and one key
-  (Tab, → or Ctrl+K, to be decided) opens the list for the selected result, filterable by typing. Providers
-  supply actions with a title, an optional shortcut and a callback; the existing Ctrl+Enter, Shift and
-  Ctrl+1…9 behaviours become ordinary actions with shortcuts. Most items below depend on this.
+- **Result actions** · `done` 2026-11-27. Ctrl+K (or → at the end of the query) opens the selected result's actions in
+  place of the results, filterable by typing, with submenus; Enter runs the default. Providers build `ResultAction`s on
+  demand, with shared sets in `ResultActions.cs`; Ctrl+Enter, Shift, Ctrl+1…9 and `@N` are ordinary actions with
+  shortcuts. See `docs/launcher.md` (Result actions). Not yet checked with the real keyboard and mouse (only through the pipe).
 - **Launcher supervisor: come back after a crash** · `idea` · M. Needed once the launcher also owns the workspace keys.
   Layers, cheapest first:
   1. `done` 2026-11-27. In the launcher: log UI-thread errors and keep running; on a background crash or a burst of UI
@@ -38,8 +38,9 @@ with providers and actions around it.
   The launcher keeps registering its own hotkey when it runs without the supervisor (development, or people who don't want it).
   Considered, not recommended: binding Alt+Space in GlazeWM to `shell-exec GlazeLauncher.exe --toggle`. It starts a .NET process on every press,
   which adds noticeable delay, and it only works while GlazeWM runs.
-- **Launcher settings file** · `idea` · S. A `settings.json` in `%LOCALAPPDATA%\GlazeLauncher\` for aliases,
-  extra indexed folders and later the hotkey. Needed by aliases and the shortcut folder.
+- **Launcher settings file** · `done` 2026-11-27 (plumbing only). `%LOCALAPPDATA%\GlazeLauncher\settings.json` with
+  `version`, `hotkey`, `aliases` and `indexedFolders` (`Settings.cs`). Loaded at start, reloaded on hand edits, saved
+  atomically; nothing reads the values yet. Aliases, the shortcut folder and the hotkey build on it.
 - **Window backend without GlazeWM** · `idea` · M. The launcher already starts and finds apps without GlazeWM.
   Put window listing and focusing behind one interface with two backends: GlazeWM IPC, and plain Win32
   (enumerate top-level windows, restore if minimized, bring to front). Decide per feature what it means
@@ -48,10 +49,14 @@ with providers and actions around it.
 
 ### Actions on results
 
-- **App → Open file location** · `idea` · S. Show the exe or shortcut selected in Explorer.
-- **Window → Close / End task** · `idea` · S. Close sends a normal close; End task kills the process and should
-  ask for a second press, since it can lose unsaved work.
-- **Window → Move to workspace** · `idea` · S. Already possible with `@N` and Ctrl+1…9; list it as an action so it's discoverable.
+- **App → Open file location** · `done` 2026-11-27. Selects the app's target exe in Explorer; windows have it too. Not
+  offered for packaged apps, whose files sit in `WindowsApps`, which Explorer can't open.
+- **Window → Close / End task** · `done` 2026-11-27. Close (Ctrl+W) sends a normal close through GlazeWM; End task kills
+  the process after a second Enter in the action list and has no shortcut.
+- **Window → Move to workspace** · `done` 2026-11-27. A submenu with slots 1–9 of the monitor you're on (what's on each,
+  Ctrl+N, Shift+Enter to stay); apps have the same as "Open on workspace".
+- **Action list: closer filter matching** · `idea` · S. The action filter uses the result matcher, so loose subsequence
+  matches show too (`end` also lists "Close window"). Consider prefix and word-start matches only for the short action list.
 - **Folder → Open terminal here** · `idea` · S. cmd, PowerShell or Windows Terminal, whichever is the default or chosen.
 - **`.sln` / `.slnx` → Open with Rider, Visual Studio or VS Code** · `idea` · S–M. Detect which IDEs are installed. Depends on file results (recent files below).
 - **Aliases** · `idea` · M. Extra names for a result, so `codex` finds ChatGPT. UX proposal: an "Add alias…" action on

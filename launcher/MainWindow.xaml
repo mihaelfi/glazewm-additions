@@ -79,6 +79,36 @@
         </Border>
       </Grid>
     </DataTemplate>
+    <DataTemplate x:Key="ActionTemplate" DataType="{x:Type local:ActionRow}">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="38"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock x:Name="ActionGlyph" Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="15"
+                   Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="5,0,0,0"/>
+        <DockPanel Grid.Column="1" VerticalAlignment="Center" LastChildFill="True">
+          <local:HighlightedTextBlock x:Name="ActionTitle" DockPanel.Dock="Left" Value="{Binding TitleText}" FontSize="14"
+                                      TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{Binding Detail}" Visibility="{Binding DetailVisibility}" FontSize="12" Margin="10,0,0,0"
+                     Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+        </DockPanel>
+        <Border Grid.Column="2" Visibility="{Binding ShortcutVisibility}" Background="{StaticResource BadgeBrush}"
+                CornerRadius="5" Padding="8,1" Margin="10,0,0,0" VerticalAlignment="Center">
+          <TextBlock Text="{Binding ShortcutLabel}" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
+        </Border>
+      </Grid>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding IsDestructive}" Value="True">
+          <Setter TargetName="ActionGlyph" Property="Foreground" Value="{StaticResource DangerBrush}"/>
+          <Setter TargetName="ActionTitle" Property="Foreground" Value="{StaticResource DangerBrush}"/>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsArmed}" Value="True">
+          <Setter TargetName="ActionTitle" Property="FontWeight" Value="SemiBold"/>
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
   </Window.Resources>
 
   <Grid x:Name="LauncherContent" Margin="12">
@@ -107,8 +137,20 @@
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="16"
+        <TextBlock x:Name="SearchGlyph" Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="16"
                    Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+        <!-- In the action list: the result being acted on, and the submenu path. -->
+        <Border x:Name="Crumb" Visibility="Collapsed" Background="{StaticResource BadgeBrush}" CornerRadius="5"
+                Padding="6,2,8,2" Margin="0,0,10,0" VerticalAlignment="Center" MaxWidth="330">
+          <StackPanel Orientation="Horizontal">
+            <Grid Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center">
+              <Image x:Name="CrumbIcon" Width="18" Height="18" RenderOptions.BitmapScalingMode="HighQuality"/>
+              <TextBlock x:Name="CrumbGlyph" FontFamily="{StaticResource IconFont}" FontSize="13"
+                         Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
+            <TextBlock x:Name="CrumbText" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+        </Border>
         <TextBlock x:Name="Placeholder" Grid.Column="1" Text="Apps, windows, commands…   @3 → workspace 3"
                    Foreground="{StaticResource MutedBrush}" FontSize="18" VerticalAlignment="Center"
                    Margin="3,0,0,0" IsHitTestVisible="False"/>
@@ -129,6 +171,12 @@
              ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden"
              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
              PreviewMouseLeftButtonUp="Results_PreviewMouseLeftButtonUp"/>
+
+    <ListBox x:Name="ActionList" Grid.Row="1" Margin="0,8,0,0" MaxHeight="468" Visibility="Collapsed"
+             Background="Transparent" BorderThickness="0" Focusable="False" Foreground="{StaticResource TextBrush}"
+             ItemContainerStyle="{StaticResource ResultContainer}" ItemTemplate="{StaticResource ActionTemplate}"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden"
+             PreviewMouseLeftButtonUp="ActionList_PreviewMouseLeftButtonUp"/>
 
     <TextBlock x:Name="Footer" Grid.Row="2" Margin="4,8,4,0" FontSize="11.5" Foreground="{StaticResource MutedBrush}"
                TextTrimming="CharacterEllipsis"/>
