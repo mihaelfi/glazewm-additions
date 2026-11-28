@@ -112,6 +112,7 @@ public partial class App : Application
         _glaze = new GlazeClient();
         var identity = new WindowIdentity();
         var actions = new Actions(_glaze, _usage, identity);
+        var files = new FileSearchProvider(new IndexClient(), shellIndex);
         var search = new SearchEngine(
             [
                 new AppSearchProvider(shellIndex, identity, actions, aliases),
@@ -120,6 +121,7 @@ public partial class App : Application
                 new FolderSearchProvider(shellIndex, aliases),
                 new CommandSearchProvider(actions, aliases),
                 new WorkspaceSearchProvider(actions),
+                files,
             ],
             _usage, aliases);
 
@@ -127,6 +129,7 @@ public partial class App : Application
         _ = new WindowRescue(_glaze, Dispatcher);
 
         _window = new MainWindow(_glaze, shellIndex, search, actions, icons);
+        files.Changed += _window.RefreshResults;
         var hwnd = _window.Prepare();
         HwndSource.FromHwnd(hwnd)!.AddHook(WndProc);
         RegisterHotkeyWithRetry(hwnd);

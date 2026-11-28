@@ -42,6 +42,10 @@ public partial class MainWindow : Window
 
     public IntPtr Handle => _hwnd;
 
+    /// <summary>A provider has new results for the current query (file search): re-run it, keeping the selection.
+    /// Safe from any thread.</summary>
+    public void RefreshResults() => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(keepSelection: true); });
+
     /// <summary>Creates the HWND without showing the window, so the first show is instant.</summary>
     public IntPtr Prepare()
     {
@@ -283,6 +287,7 @@ public partial class MainWindow : Window
         if (actions.Count > 1) parts.Add("Ctrl+K actions");
         foreach (var action in actions.Skip(1))
         {
+            if (action.IsInert) continue; // e.g. "Run as administrator" on a Store app: listed in Ctrl+K with the reason
             if (action.Shortcut is { } chord) parts.Add($"{chord.Label} {action.Title}");
             else if (action.IsSubmenu && action.Hint is { } hint) parts.Add($"{hint} {action.Title}");
         }
@@ -592,9 +597,9 @@ public partial class MainWindow : Window
                 if (InActionMode) Back();
                 else HideLauncher(restoreFocus: true);
                 return true;
-            case Key.Down: Move(1); return true;
-            case Key.Up: Move(-1); return true;
-            case Key.Tab: Move(shift ? -1 : 1); return true;
+            case Key.Down: Move(1, wrap: true); return true;
+            case Key.Up: Move(-1, wrap: true); return true;
+            case Key.Tab: Move(shift ? -1 : 1, wrap: true); return true;
             case Key.PageDown: Move(8); return true;
             case Key.PageUp: Move(-8); return true;
             case Key.Enter:
@@ -616,11 +621,15 @@ public partial class MainWindow : Window
         return ctrl && TryShortcut(key, mods);
     }
 
-    private void Move(int delta)
+    /// <summary>Moves the selection. With <paramref name="wrap"/> (↑ ↓ Tab), stepping past either end goes to the other
+    /// end; Page Up / Page Down stop at the ends.</summary>
+    private void Move(int delta, bool wrap = false)
     {
         var list = InActionMode ? ActionList : Results;
-        if (list.Items.Count == 0) return;
-        list.SelectedIndex = Math.Clamp(list.SelectedIndex + delta, 0, list.Items.Count - 1);
+        int count = list.Items.Count;
+        if (count == 0) return;
+        int next = list.SelectedIndex + delta;
+        list.SelectedIndex = wrap ? ((next % count) + count) % count : Math.Clamp(next, 0, count - 1);
         list.ScrollIntoView(list.SelectedItem);
         UpdateFooter();
     }
@@ -656,6 +665,7 @@ internal sealed class ActionRow(ResultAction action, bool isDefault, int[]? matc
 
     public string ShortcutLabel => action.IsSubmenu
         ? (action.Hint is { } hint ? hint + "  ›" : "›")
+        : action.IsInert ? ""
         : action.Shortcut?.Label ?? action.Hint ?? (isDefault ? "↵" : "");
     public Visibility ShortcutVisibility => ShortcutLabel.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 

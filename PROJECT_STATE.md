@@ -21,6 +21,7 @@ and GPU graphs, a clock with a timer, and system status, and a custom workspace-
 | The Zebar bar or any popup (CPU, RAM, GPU, storage, clock, settings), build and deploy | [`docs/zebar.md`](docs/zebar.md) |
 | The Rust collector: sampling, endpoints, settings and timer storage | [`docs/zebar-collector.md`](docs/zebar-collector.md) (plus `zebar.md`) |
 | GlazeLauncher | [`docs/launcher.md`](docs/launcher.md) |
+| The file index service (`indexer/`, GlazeIndex): file search and folder sizes | [`docs/indexer.md`](docs/indexer.md) |
 | Picking new work, or an idea or bug report from the user | [`docs/backlog.md`](docs/backlog.md) |
 
 Each area doc has its current state, known issues, backups and its own change log.
@@ -55,6 +56,9 @@ Each area doc has its current state, known issues, backups and its own change lo
 | Widget pack source | `C:\codex\glazewm\zebar-cpu\` | Solid + TypeScript + Vite with a Rust collector in `native/` |
 | GlazeWM installer | `C:\codex\glazewm\glazewm-v3.10.1.exe` | Version in use: GlazeWM 3.10.1 (not in Git) |
 | Launcher source | `C:\codex\glazewm\launcher\` | WPF, .NET 10 (`GlazeLauncher.csproj`) |
+| Index source | `C:\codex\glazewm\indexer\` | Rust: the `GlazeIndex` service and the measuring probe |
+| Installed index service | `C:\Program Files\GlazeIndex\GlazeIndex.exe` | Windows service `GlazeIndex` (LocalSystem); install/update with `--install` from an admin terminal (agents can't) |
+| Index data | `%ProgramData%\GlazeIndex\` | `index.log` (readable), `data\` snapshots (admin only); pipe `\\.\pipe\GlazeIndex` |
 | Supervisor source | `C:\codex\glazewm\supervisor\` | Rust (`GlazeSupervisor.exe`); restarts the launcher after a crash or hang |
 | Installed launcher | `%USERPROFILE%\.glzr\launcher\` | Published output plus `GlazeSupervisor.exe`; GlazeWM starts the supervisor from here |
 | Launcher data | `%LOCALAPPDATA%\GlazeLauncher\` | `launcher.log`, `supervisor.log`, `settings.json` (launcher settings), `usage.json` (frecency), `workspace-merges.json`, `snapshot.png` (debug) |
@@ -87,6 +91,11 @@ It is public, so keep personal paths and data out of new commits where possible.
 ## Cross-cutting change log
 
 Area changes are logged in each area doc. Only changes that span the project go here. Newest first.
+
+### 2026-11-28
+- **Added the file index service GlazeIndex** (`indexer/`, new area doc `docs/indexer.md`): an Everything-style index of the
+  internal NTFS drives, kept current from the change journal, running as a Windows service. The launcher shows its file and
+  folder results; the Zebar space map will use it next.
 
 ### 2026-11-27
 - **Added GlazeSupervisor** (`supervisor/`), now started by GlazeWM in place of the launcher. See `docs/launcher.md`.

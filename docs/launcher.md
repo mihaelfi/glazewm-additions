@@ -13,6 +13,8 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
 
 - **Alt+Space** toggles it. It opens centred on the monitor GlazeWM has focused, a fifth of the way down. Esc, or clicking elsewhere, closes it.
   The content fades and slides into place over 125 ms. The selected row has a lavender accent that fades in over 85 ms. Both effects respect Windows' animation setting. Typing, navigation, closing and opening a result respond immediately.
+- **↑ ↓ and Tab / Shift+Tab wrap around** in the results and the action list: ↑ on the top row goes to the last, ↓ on
+  the last goes to the top. Page Up / Page Down move 8 rows and stop at the ends.
 - An **empty query** lists recent items for the current workspace, then every open window (other workspaces first) as a window switcher.
 - Typing searches **apps** (Start menu and Store apps, from `shell:AppsFolder`), **open windows** (by title or process),
   **open Chrome and Edge tabs**, **folders**, and **commands** (tiling direction, floating, fullscreen, redraw, reload config, pause, workspace Sync, re-index, quit).
@@ -26,6 +28,14 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
 - **Go to a workspace:** a query that is only `@N` shows **Go to workspace N** at the top; Enter switches to it. The same one-digit/two-digit rule as below applies. The usual list stays below it, so ↓ still picks a window or app to send there.
 - **Browser tabs:** Search by tab title. A tab result shows the browser and workspace. Enter switches to that workspace and selects the existing tab. Chrome and Edge use Windows UI Automation without an extension or a change to browser settings.
 - **Folders:** Search for Home, Desktop, Downloads, Documents, Pictures, Music, or Videos and press Enter to open the folder in File Explorer. Results show the Windows icon and the current user's registered path, including redirected locations. Used folders can appear in recents.
+- **Files and folders anywhere** (from the GlazeIndex service, [`indexer.md`](indexer.md)): from 3 letters, the index's
+  best 12 files and folders on the internal drives show below apps that match by name or word start (they rank as
+  substring matches, above loose subsequence matches). The subtitle has the size (a folder's total) and the containing
+  folder. Several words may match across the path: `dragon tooltips` finds `D:\Dragon Age Mods\Detailed Tooltips-248`.
+  Folders come first; `node_modules`, `.git`, `AppData`, `Windows` and package caches are pushed down. Results arrive a
+  few ms after the keystroke without blocking typing; the previous query's still-matching results stay meanwhile. Known
+  folders (Downloads, …) are left to the folder provider. Recently opened files and folders show on the home screen.
+  Without the service the launcher works as before (one log line, then it retries every 15 s).
 - **Send to a workspace:** add `@N` to the query, or press **Ctrl+1…9** on a result. One digit means slot N in the group of
   the monitor you were on when you opened the launcher (`@3` → `13` on the primary monitor, `23` on the next one), the same
   rule as Alt+N; two digits (`@23`) are taken literally. The launcher also opens on that monitor. By default your view follows the window; hold **Shift** to stay where you are
@@ -48,10 +58,12 @@ the results is built from the selected result's actions: the default, Ctrl+K, an
 
 | Result | Actions (shortcut) |
 |---|---|
-| App | Focus open window / Focus next open window, or Open (↵) · Open new window (Ctrl+↵, when open) · Open on workspace › (Ctrl+1–9, +Shift stay) · Open file location (Win32 apps only) |
+| App | Focus open window / Focus next open window, or Open (↵) · Open new window (Ctrl+↵, when open) · Open on workspace › (Ctrl+1–9, +Shift stay) · Run as administrator (Ctrl+Shift+↵; programs and desktop Store apps, a muted row for UWP apps) · Open file location (Win32 apps only) |
 | Window | Focus window (↵) · Bring to this workspace (Ctrl+↵, when elsewhere) · Move to workspace › (Ctrl+1–9, +Shift stay) · Open file location · Close window (Ctrl+W) · End task |
 | With `@N` in the query | App: Open on workspace N (↵, Shift+↵ stay); window: Move to workspace N (↵, Shift+↵ stay) |
 | Folder, command | Their default action (Open in File Explorer / Run) |
+| Indexed folder | Open (↵) · Open in Terminal here (Ctrl+↵) · … as administrator (Ctrl+Shift+↵) · Open PowerShell 7 here · Open Command Prompt here (each +Shift: as administrator) · Open file location · Copy path |
+| Indexed file | Open (↵) · Open file location (Ctrl+↵) · Run as administrator (Ctrl+Shift+↵; `.exe`, `.bat`, `.cmd`, `.com`, `.msi`) · Open in Terminal in its folder · Copy path |
 | App, folder, command | Also: Add alias… (text entry) · Aliases › (when it has any; Enter on one removes it) |
 | Go to workspace, browser tab | One default action each |
 
@@ -66,6 +78,18 @@ the results is built from the selected result's actions: the default, Ctrl+K, an
   process; elevated processes fail (logged).
 - **Open file location** runs `explorer /select,` on the app's target exe or the window's exe. It isn't offered for
   packaged apps (their files are in `WindowsApps`, which Explorer can't open).
+- **Run as administrator** (Ctrl+Shift+↵, the Start menu's key) starts a new elevated instance, also when the app is
+  already open. It is offered exactly where the Start menu offers it: Win32 entries whose target is an `.exe`, `.bat`,
+  `.cmd` or `.msc` (not `.url`, `.pdf`, Steam links), and packaged apps with `System.AppUserModel.HostEnvironment` = 2
+  (desktop-bridge apps: Terminal, Notepad, Paint, ChatGPT, Claude…). UWP apps (Calculator, Settings) show a muted
+  "not possible for this Store app" row that keeps the shortcut, so Ctrl+Shift+↵ does nothing there instead of an ordinary
+  launch; the footer skips inert actions. Both rules matched the shell's own verb list for all 295 AppsFolder entries
+  (2026-11-28) and cost one property read per packaged app at index time. `Actions.RunAsAdmin` runs ShellExecute `runas`
+  on `shell:AppsFolder\<id>` (the shortcut with its arguments); a Win32 entry whose item refuses the verb falls back to its
+  target exe. It runs off the UI thread, because ShellExecute returns only once the UAC prompt is answered and the
+  supervisor ends a UI that is unresponsive for about 11 s. Frecency is recorded like a normal launch. A cancelled UAC prompt
+  is never an error: on the AppsFolder item ShellExecute reports success either way (nothing is logged), and on the exe
+  fallback error 1223 is logged as `UAC prompt cancelled`.
 - **Add alias…** turns the search box into a text field (`ChatGPT › Add alias…`). The row under it follows the text: `Add
   alias "codex"  for ChatGPT`, `Move alias "codex" here  from Notepad` when another result has it, or a muted line saying why
   it can't be saved (already this result's alias, contains `@`, longer than 40 characters, or `settings.json` has a JSON
@@ -73,6 +97,11 @@ the results is built from the selected result's actions: the default, Ctrl+K, an
   spaces collapsed.
 - **Aliases ›** lists the result's aliases as "Remove alias …" rows; Enter removes one and the list stays open (it closes
   when the last one is gone).
+- **Terminals in a folder** (`Actions.OpenShell`): Windows Terminal when its `wt.exe` alias exists (otherwise PowerShell
+  takes the Terminal rows), PowerShell 7 when `pwsh.exe` is on PATH (otherwise Windows PowerShell), and cmd. Normally the
+  folder is the working directory (`wt -d .`, nothing to quote); elevated starts ignore that, so then the folder goes on the
+  command line (`wt -d "D:\\"`, `pwsh -NoExit -Command "Set-Location -LiteralPath '…'"`, `cmd /k cd /d "…"`). Elevated
+  starts run off the UI thread, like Run as administrator; a cancelled UAC prompt is logged, not an error.
 - Close, End task, Open file location and the alias actions don't count towards frecency; workspace actions record usage for the target workspace.
 - **Text-entry levels and keep-open actions** are general: a `ResultAction` with `Input` builds its rows from the typed text,
   `ActionFlags.KeepOpen` runs an action without hiding the launcher (then searches `ThenQuery`, or rebuilds the list), and
@@ -148,7 +177,7 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
 | `App.xaml.cs` | Single instance (mutex `Local\GlazeLauncher.Instance`), Alt+Space `RegisterHotKey` (retried every 5 s while another program holds it), named-pipe server `GlazeLauncher`, the detached relaunch, and crash recovery |
 | `WorkspaceManager.cs` | Workspace groups, the monitor you're on, Alt+N / Alt+Shift+N, and syncing workspaces to monitors (see Workspace manager) |
 | `GlazeClient.cs` | WebSocket client for GlazeWM IPC `ws://127.0.0.1:6123`: `sub --events …`, `query monitors`, `command [--id X] …`. On any event it re-queries the tree (80 ms debounce), forwards `window_managed`, and raises `EventReceived` and `ConnectionChanged`. `WmSnapshot.TargetMonitor` is the monitor a one-digit `@N` refers to. `WmWindow` keeps id, handle, title, process, workspace and focus, not the window state; `WindowStateAsync` queries one window's state on demand |
-| `ShellIndex.cs` | Refreshes the app catalog and known folders on the background STA thread. Checks Store package status while indexing apps and re-indexes on open if the index is older than 2 min. |
+| `ShellIndex.cs` | Refreshes the app catalog and known folders on the background STA thread. Checks Store package status while indexing apps and re-indexes on open if the index is older than 2 min. Marks each `AppEntry` as packaged and whether it can run as administrator (`CanElevate`). |
 | `KnownFolder.cs` | Resolves the standard per-user folder IDs with `SHGetKnownFolderPath` and publishes the folders Windows can resolve |
 | `Search.cs` | Query parsing (`@N`), fuzzy match tiers and character positions, merged ranking, shared result model (`MatchedAlias` for the tag), `WindowIdentity` |
 | `SearchProviders.cs` | `ISearchProvider` contract and the compiled-in app, window, folder, command and go-to-workspace providers. A `Pinned` result is shown above all ranked results. `SearchContext.AliasHits` holds the query's alias matches (computed once per search); `WithAlias` picks the better of name and alias match |
@@ -156,12 +185,14 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
 | `Settings.cs` | `LauncherSettings` and `SettingsStore`: load, watch, atomic save of `settings.json` |
 | `Aliases.cs` | `AliasBook`: alias index built lazily from the current settings (no events or locks), exact/prefix matching per query, add, move and remove through `SettingsStore.Update` |
 | `BrowserTabSearchProvider.cs` | Refreshes the Chrome and Edge tab cache on a background thread using only their accessibility tab strips. Selects a tab by its runtime ID within the original browser window. |
-| `Actions.cs` | What actions do: `Run` (records frecency, logs failures), launch, `LaunchOn`, `FocusOrCycle`, `MoveWindow`, `CloseWindow`, `EndTask`, `ShowInExplorer`, commands. Open app and window results share a focus path that runs `focus --workspace N` for hidden workspaces, restores a minimized window (Win32 `SW_RESTORE`, then waits up to 600 ms for GlazeWM to stop reporting it as minimized, because focusing it earlier leaves GlazeWM's focus on the previous window), then runs `focus --container-id`. After an `@N` launch, the next matching `window_managed` window (within 15 s) gets `move --workspace N` and uses the same focus path if following. |
+| `Actions.cs` | What actions do: `Run` (records frecency, logs failures), launch, `LaunchOn`, `RunAsAdmin`, `FocusOrCycle`, `MoveWindow`, `CloseWindow`, `EndTask`, `ShowInExplorer`, commands. Open app and window results share a focus path that runs `focus --workspace N` for hidden workspaces, restores a minimized window (Win32 `SW_RESTORE`, then waits up to 600 ms for GlazeWM to stop reporting it as minimized, because focusing it earlier leaves GlazeWM's focus on the previous window), then runs `focus --container-id`. After an `@N` launch, the next matching `window_managed` window (within 15 s) gets `move --workspace N` and uses the same focus path if following. |
 | `IconCache.cs` | Windows Shell icons (`IShellItemImageFactory`, 48px, alpha kept) loaded on the STA thread. Known folders use `SHGetKnownFolderItem` first, and the cache warms folder icons before app icons at startup. |
 | `UsageStore.cs` | Frecency (half-life 10 days), global and per workspace, saved to `usage.json` |
 | `MainWindow.xaml(.cs)` | UI (bar palette `#151b30` / `#b6acff`, DWM rounded corners), keys, placement, and the action list (levels, filter, confirm, shortcut lookup). `ActionRow` is one row of the list |
 | `HighlightedTextBlock.cs` | Renders matching characters as WPF runs and keeps Unicode text elements intact |
 | `WindowRescue.cs` | Uncloaks windows a dead GlazeWM left hidden (see below) |
+| `IndexClient.cs` | Client for GlazeIndex on `\\.\pipe\GlazeIndex` (`search<TAB>limit<TAB>text`, JSON reply); 150 ms connect timeout, 15 s back-off when the service is down |
+| `FileSearchProvider.cs` | Files and folders from GlazeIndex: background query (only the newest in flight), cached reply, `Changed` → `MainWindow.RefreshResults`; recents for the home screen; `ResultItem.FixedTitleMatches` carries the service's highlight |
 | `Native.cs`, `Infrastructure.cs` | Win32 interop; the shared background STA worker |
 
 - **Matching a window to an app.** An app's IDs are its AppsFolder ID (an AUMID or a path), its exe name, its name with spaces removed, and for packaged apps the family name plus a small alias table (`PackagedProcessAliases`: Terminal, Notepad, Calculator, Paint). A window's IDs are its process name, its process's packaged AUMID (`GetApplicationUserModelId`), and its window AUMID (`PKEY_AppUserModel_ID`). They match if the two sets share any ID. Squirrel apps (Discord) point at `Update.exe`, which is ignored; the name match covers them.
@@ -208,7 +239,8 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
     nothing here; it helps on PCs where it's on. The `--restart` rule keeps the two from ending up with two copies.
   - Doesn't cover native crashes, hangs or being killed on this PC; the supervisor does.
 - **Command line:** `GlazeLauncher.exe --toggle|--show|--hide|--reindex|--sync|--quit` forwards the command to the running instance over the pipe. With no argument a second start toggles.
-- **Debug pipe commands** (send them with a `NamedPipeClientStream` to `GlazeLauncher`, not available as exe flags): `query:<text>` types a query,
+- **Debug pipe commands** (send them with a `NamedPipeClientStream` to `GlazeLauncher` opened with `PipeDirection.Out`,
+  since the server is in-only and `InOut` gets "access denied"; not available as exe flags): `query:<text>` types a query,
   `enter`, `enter:ctrl` or `enter:shift` runs what Enter would (nothing while hidden), `actions` opens the
   action list (Ctrl+K), `back` goes back a level, `key:<chord>` presses a key through the normal key handling (`key:ctrl+shift+3`,
   `key:ctrl+w`, `key:right`, `key:escape`; while the list is open, `query:` sets its filter), and `snapshot` renders the window to `%LOCALAPPDATA%\GlazeLauncher\snapshot.png`.
@@ -252,10 +284,8 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
   may need an entry in `PackagedProcessAliases`.
 - Browser tab search depends on the tab controls Chrome and Edge expose through accessibility. Fullscreen and collapsed tab groups have not been checked.
 - Minimized windows are sometimes missing from results (needs a repro). Tracked in the backlog.
-- **Aliases were checked through the pipe only** (add, duplicate, `@`, move preview, folder alias, `codex @3`, remove,
-  restart). Not yet checked: typing them with the real keyboard, hand edits of `aliases` in `settings.json`, and a command alias.
-- **Result actions were checked through the pipe only** (`key:`, `enter`, `actions`). Not yet checked: the real keyboard
-  (Ctrl+K, →, Ctrl+W, Ctrl+1…9), mouse clicks on action rows, and Shift-click.
+- **Aliases and result actions (Ctrl+K)** were confirmed by the user with the real keyboard on 2026-11-28. Not yet checked:
+  hand edits of `aliases` in `settings.json`, a command alias, and Shift-click on action rows.
 - **The workspace keys need the launcher.** The supervisor restarts it after any crash at once and after a hang in about
   11 s; keys pressed in between do nothing. If the supervisor itself isn't running (Quit, or it was never started), a
   crash leaves the keys dead until GlazeWM is restarted or the supervisor is started again.
@@ -267,6 +297,13 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
 - **The window rescue was checked end to end on the GlazeWM-exit path** (2026-11-28): `Stop-Process glazewm` with
   Windows Terminal and Docker Desktop on a hidden workspace; both were uncloaked 3 s later and the next GlazeWM adopted them.
   Not yet checked: the reconnect path (a new GlazeWM up within 3 s of the old one dying).
+- **Run as administrator was confirmed by the user** (2026-11-28) with the real keyboard: approving and cancelling UAC for
+  PowerShell 7 (Win32), Terminal and WhatsApp (packaged). `runas` on `shell:AppsFolder\<id>` worked for all of them; the exe
+  fallback never ran. **A cancelled prompt logs nothing:** no `UAC prompt cancelled` line appeared, so ShellExecute on an
+  AppsFolder item apparently returns success and the elevation (or cancel) happens later in the shell. The 1223 branch is
+  then only reached through the exe fallback. Harmless (nothing is logged as an error), but the log can't tell a cancel from
+  a launch. Not checked: whether GlazeWM, which runs unelevated, can tile or move the elevated window (Windows blocks
+  input from lower-integrity processes).
 
 **Testing tip:** a throwaway WinForms window (`[System.Windows.Forms.Application]::Run($form)` from a background PowerShell)
 is a safe target for window tests. To see a `snapshot`, have GlazeWM copy it out of the real `%LOCALAPPDATA%`
@@ -289,15 +326,36 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-result-actions-20261127-194948\`: before result actions and the settings file
 - `.glzr\launcher\before-aliases-20261127-224525\`: before aliases
 - `.glzr\launcher\before-window-rescue-20261128-100413\`: before the window rescue
+- `.glzr\launcher\before-file-search-20261128-110655\`: before file and folder results
+- `.glzr\launcher\before-run-as-admin-20261128-104516\`: before Run as administrator
+- `.glzr\launcher\before-list-wrap-20261128-112255\`: before ↑ ↓ wrap-around
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-28
+- **↑ ↓ and Tab wrap around** in the results and the action list (user request). `MainWindow.xaml.cs`: `Move` takes
+  `wrap`; Page Up / Page Down still stop at the ends. Installed through the supervisor (this build also carries the file
+  search changes below; GlazeIndex wasn't running, so it logged `file search is off for now`). Checked through the pipe
+  with snapshots: ↑ on the first `command prompt` result selects the last, ↓ returns to the first, ↑ in Ctrl+K selects
+  "Add alias…".
+- **Added file and folder results from GlazeIndex** (the new file index service, `docs/indexer.md`). New `IndexClient.cs`
+  and `FileSearchProvider.cs`; `ActionKits.Folder` / `File` (`ResultActions.cs`); `Actions.OpenPath`, `OpenShell`
+  (Terminal / PowerShell / cmd here, also elevated), `RunFileAsAdmin`, `CopyText`; `TryRunAs` takes arguments and a
+  working directory; `ResultItem.FixedTitleMatches`; `MainWindow.RefreshResults`. Checked through the pipe with the service
+  running: `tooltips` and `dragon tooltips` (snapshots). Not yet checked: the terminal actions and Copy path with the
+  real keyboard, and file recents on the home screen.
+- **Added Run as administrator to app results** (Ctrl+Shift+↵). `ShellIndex.cs`: `AppEntry.IsPackaged` and
+  `CanRunAsAdmin` (`CanElevate`: program extension for Win32, `HostEnvironment` = 2 for packaged). `ResultActions.cs`:
+  `KeyChord.CtrlShiftEnter`, the action in `ActionKits.App` (a disabled row for UWP apps). `Actions.cs`: `RunAsAdmin`
+  (`runas` on the AppsFolder item, exe fallback, off the UI thread, error 1223 logged as a cancel). `MainWindow.xaml.cs`:
+  the footer skips inert actions and inert rows show no shortcut. Published and installed through the supervisor. Checked
+  through the pipe, then confirmed by the user with real UAC prompts (approve and cancel) on PowerShell 7, Terminal and
+  WhatsApp; a cancel on an AppsFolder item logs nothing (see Known issues).
+- **The user confirmed aliases and Ctrl+K with the real keyboard.** Known issues updated.
 - **Windows a dead GlazeWM left hidden come back.** Reported: ChatGPT was open and on the taskbar, but the launcher only
-  offered to launch it. Cause: GlazeWM died at 22:51 on 2026-11-27 (IPC dropped without a close, no crash event, nothing in
-  `errors.log`) while ChatGPT, Notepad, Signal, Steam and Task Manager were on hidden workspaces. GlazeWM's watcher doesn't
+  offered to launch it. Cause: the user turned GlazeWM off at 22:51 on 2026-11-27 while ChatGPT, Notepad, Signal, Steam and Task Manager were on hidden workspaces. GlazeWM's watcher doesn't
   uncloak, and the GlazeWM started at 09:55 skipped the cloaked windows. Uncloaked those five by hand, and GlazeWM adopted
   them. New `WindowRescue.cs` does this automatically (see How it works); `App.xaml.cs` creates it and adds the
   `debug:rescue:` pipe command. The Settings app's frame window is also shell-cloaked and outside GlazeWM; it was left alone.

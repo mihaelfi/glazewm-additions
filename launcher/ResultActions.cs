@@ -25,6 +25,8 @@ internal enum ActionFlags
 internal readonly record struct KeyChord(Key Key, ModifierKeys Modifiers)
 {
     public static readonly KeyChord CtrlEnter = new(Key.Enter, ModifierKeys.Control);
+    /// <summary>Run as administrator, as in the Start menu.</summary>
+    public static readonly KeyChord CtrlShiftEnter = new(Key.Enter, ModifierKeys.Control | ModifierKeys.Shift);
 
     public static KeyChord CtrlDigit(int digit) => new(Key.D0 + digit, ModifierKeys.Control);
 
@@ -119,6 +121,7 @@ internal readonly record struct ActionContext(WmSnapshot Wm, string? TargetWorks
 internal static class ActionKits
 {
     private const string StayHere = ", stay here";
+    private const string AdminGlyph = ""; // Admin (shield)
 
     /// <summary>Slots 1‒9 of the monitor the user is on, each with Ctrl+N and a Shift "stay here" variant.</summary>
     public static IReadOnlyList<ResultAction> WorkspaceSlots(WmSnapshot wm, string verb, string? current,
@@ -168,6 +171,15 @@ internal static class ActionKits
             Children: () => WorkspaceSlots(ctx.Wm, "Open on workspace", null,
                 (ws, follow) => actions.LaunchOn(app, ws, follow))));
 
+        // Programs and desktop-bridge packaged apps. UWP apps can't be elevated: an inert row says so, and keeps
+        // Ctrl+Shift+Enter from falling back to an ordinary launch. Documents and links (.url, .pdf) don't get it.
+        if (app.CanRunAsAdmin)
+            list.Add(new ResultAction("Run as administrator", AdminGlyph, () => actions.RunAsAdmin(app),
+                Shortcut: KeyChord.CtrlShiftEnter));
+        else if (app.IsPackaged)
+            list.Add(new ResultAction("Run as administrator", AdminGlyph, null, Shortcut: KeyChord.CtrlShiftEnter,
+                Detail: "not possible for this Store app", Flags: ActionFlags.Disabled));
+
         // Win32 apps only: a packaged app's files sit in WindowsApps, which Explorer can't show.
         if (app.TargetPath is { } path && Actions.CanShowInExplorer(path))
             list.Add(new ResultAction("Open file location", "\uE838", () => { Actions.ShowInExplorer(path); return Task.CompletedTask; },
@@ -213,6 +225,62 @@ internal static class ActionKits
             Flags: ActionFlags.Confirm | ActionFlags.Destructive | ActionFlags.NoUsage | ActionFlags.RestoreFocus));
         return list;
     }
+
+    private const string TerminalGlyph = "";
+    private const string CopyGlyph = "";
+    private static readonly string[] Runnable = [".exe", ".bat", ".cmd", ".com", ".msi"];
+
+    /// <summary>Opens a terminal in a folder: Windows Terminal when installed, otherwise PowerShell.</summary>
+    private static (string Title, Actions.ShellKind Kind) MainShell => Actions.HasWindowsTerminal
+        ? ("Open in Terminal", Actions.ShellKind.Terminal)
+        : ($"Open {Actions.PowerShellName}", Actions.ShellKind.PowerShell);
+
+    /// <summary>Actions for a folder from the file index: open, a shell in it (Ctrl+Enter, elevated with Ctrl+Shift+Enter).</summary>
+    public static IReadOnlyList<ResultAction> Folder(string path)
+    {
+        var (shellTitle, shell) = MainShell;
+        var list = new List<ResultAction>(8)
+        {
+            new("Open", "", () => { Actions.OpenPath(path); return Task.CompletedTask; }),
+            new($"{shellTitle} here", TerminalGlyph, () => Actions.OpenShell(path, shell, admin: false), Shortcut: KeyChord.CtrlEnter),
+            new($"{shellTitle} here as administrator", AdminGlyph, () => Actions.OpenShell(path, shell, admin: true),
+                Shortcut: KeyChord.CtrlShiftEnter),
+        };
+        if (shell != Actions.ShellKind.PowerShell)
+        {
+            list.Add(new($"Open {Actions.PowerShellName} here", TerminalGlyph, () => Actions.OpenShell(path, Actions.ShellKind.PowerShell, admin: false),
+                Shifted: new($"Open {Actions.PowerShellName} here as administrator", AdminGlyph,
+                    () => Actions.OpenShell(path, Actions.ShellKind.PowerShell, admin: true))));
+        }
+        list.Add(new("Open Command Prompt here", TerminalGlyph, () => Actions.OpenShell(path, Actions.ShellKind.Cmd, admin: false),
+            Shifted: new("Open Command Prompt here as administrator", AdminGlyph, () => Actions.OpenShell(path, Actions.ShellKind.Cmd, admin: true))));
+        list.Add(ShowInFolder(path));
+        list.Add(CopyPath(path));
+        return list;
+    }
+
+    /// <summary>Actions for a file from the file index.</summary>
+    public static IReadOnlyList<ResultAction> File(string path)
+    {
+        var folder = Path.GetDirectoryName(path) ?? path;
+        var (shellTitle, shell) = MainShell;
+        var list = new List<ResultAction>(6)
+        {
+            new("Open", "", () => { Actions.OpenPath(path); return Task.CompletedTask; }),
+            ShowInFolder(path) with { Shortcut = KeyChord.CtrlEnter },
+        };
+        if (Runnable.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+            list.Add(new("Run as administrator", AdminGlyph, () => Actions.RunFileAsAdmin(path), Shortcut: KeyChord.CtrlShiftEnter));
+        list.Add(new($"{shellTitle} in its folder", TerminalGlyph, () => Actions.OpenShell(folder, shell, admin: false), Detail: folder));
+        list.Add(CopyPath(path));
+        return list;
+    }
+
+    private static ResultAction ShowInFolder(string path) =>
+        new("Open file location", "", () => { Actions.ShowInExplorer(path); return Task.CompletedTask; }, Detail: Path.GetDirectoryName(path));
+
+    private static ResultAction CopyPath(string path) =>
+        new("Copy path", CopyGlyph, () => { Actions.CopyText(path); return Task.CompletedTask; }, Detail: path, Flags: ActionFlags.NoUsage);
 
     /// <summary>A result with one thing to do.</summary>
     public static Func<ActionContext, IReadOnlyList<ResultAction>> Single(string title, string glyph, Func<Task> run) =>

@@ -62,15 +62,12 @@ GlazeWM's focused monitor (wrong after clicking an empty desktop), and started P
 
 ## Known issues
 
-- Mass Effect 2 was reported to start without a visible game when launched through Legendary Edition
-  with GlazeWM running. The process-specific ignore rule is loaded and GlazeWM released the running
-  game window. A fresh launch and the game's display still need verification.
 - The workspace keys depend on GlazeLauncher running (see its doc).
 - **GlazeWM 3.10.1 leaves windows hidden when it dies.** Hidden workspaces are shell-cloaked; its watcher re-shows the
   windows after a crash or kill but doesn't uncloak them, and a new GlazeWM skips cloaked windows. GlazeLauncher now
   uncloaks them (`docs/launcher.md`, "Rescuing windows after GlazeWM dies"). Without the launcher, close and reopen the app.
   When GlazeWM was killed on 2026-11-28, the watcher itself also crashed during its cleanup (access violation in `combase.dll`).
-  GlazeWM died this way at 22:51 on 2026-11-27 for an unknown reason (no crash event, nothing in `errors.log`).
+  Seen at 22:51 on 2026-11-27, when the user turned GlazeWM off: windows on hidden workspaces stayed cloaked.
 
 ## Backups
 
@@ -84,6 +81,10 @@ GlazeWM's focused monitor (wrong after clicking an empty desktop), and started P
 ## Change log
 
 Newest first.
+
+### 2026-11-28
+- **Mass Effect 2 confirmed** by the user: a fresh launch shows the game. Noted that GlazeWM 3.10.1 leaves hidden
+  windows cloaked when it exits (known issues); no config change.
 
 ### 2026-11-27
 - **Ignored the Mass Effect 2 game window** in the live `config.yaml`. GlazeWM had classified the running

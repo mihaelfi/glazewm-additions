@@ -20,6 +20,8 @@ with providers and actions around it.
   place of the results, filterable by typing, with submenus; Enter runs the default. Providers build `ResultAction`s on
   demand, with shared sets in `ResultActions.cs`; Ctrl+Enter, Shift, Ctrl+1…9 and `@N` are ordinary actions with
   shortcuts. See `docs/launcher.md` (Result actions). Not yet checked with the real keyboard and mouse (only through the pipe).
+- **↑ ↓ wrap around in the lists** · `done` 2026-11-28 (user request). ↑ on the top row goes to the last and ↓ on the last
+  to the top, also with Tab and in the Ctrl+K list; Page Up / Page Down stop at the ends. Checked through the pipe.
 - **Launcher supervisor: come back after a crash** · `done` 2026-11-27 (all three layers below).
   Layers, cheapest first:
   1. `done` 2026-11-27. In the launcher: log UI-thread errors and keep running; on a background crash or a burst of UI
@@ -55,9 +57,18 @@ with providers and actions around it.
   the process after a second Enter in the action list and has no shortcut.
 - **Window → Move to workspace** · `done` 2026-11-27. A submenu with slots 1–9 of the monitor you're on (what's on each,
   Ctrl+N, Shift+Enter to stay); apps have the same as "Open on workspace".
+- **App → Run as administrator** · `done` 2026-11-28. Ctrl+Shift+Enter or Ctrl+K; offered where the Start menu offers it
+  (programs and desktop-bridge Store apps), a muted row for UWP apps. Confirmed by the user with real UAC prompts (approve
+  and cancel, Win32 and packaged). See `docs/launcher.md` (Result actions).
+- **Window → Run as administrator / restart elevated** · `idea` · S. Same helper on a window result: start the window's
+  exe elevated (optionally after closing it). Needs the exe path, which window results already have.
 - **Action list: closer filter matching** · `idea` · S. The action filter uses the result matcher, so loose subsequence
   matches show too (`end` also lists "Close window"). Consider prefix and word-start matches only for the short action list.
-- **Folder → Open terminal here** · `idea` · S. cmd, PowerShell or Windows Terminal, whichever is the default or chosen.
+- **Folder → Open terminal here** · `done` 2026-11-28, `verify` with the real keyboard. Indexed folders: Terminal here
+  (Ctrl+Enter), as administrator (Ctrl+Shift+Enter), PowerShell and Command Prompt here (Shift: as administrator).
+- **Aliases for files and folders** · `idea` · S. Index results use `path:` usage keys, which `AliasBook` and its
+  "Add alias…" rows don't know yet.
+- **Open with… for files** · `idea` · S. The Windows "Open with" dialog, and the app list for the file's extension.
 - **`.sln` / `.slnx` → Open with Rider, Visual Studio or VS Code** · `idea` · S–M. Detect which IDEs are installed. Depends on file results (recent files below).
 - **Aliases** · `done` 2026-11-27. Extra names for apps, folders and commands, so `codex` finds ChatGPT. Ctrl+K › Add alias…
   (text entry, can move an alias from another result), Aliases › to remove; exact and prefix matching only; a tag shows
@@ -83,6 +94,16 @@ with providers and actions around it.
 - **Shortcut folder** · `idea` · S. Index a folder the user picks (for example `C:\launcher shortcuts`) and show its items with their own badge.
 - **Recent files** · `idea` · M. Start from Windows' own recent items (`%APPDATA%\Microsoft\Windows\Recent`), which needs
   no indexing service. Later perhaps per-app jump lists.
+- **File and folder index, Everything-style (shared helper)** · `done` 2026-11-28. The GlazeIndex service
+  ([`indexer.md`](indexer.md)) reads the MFT, follows the USN journal (it created the missing ones on D and E), and serves
+  searches over a pipe; the launcher shows its files and folders. Follow-ups:
+  - **Clean stop** · `verify`. The installed build cancels blocked journal reads on stop; not yet seen in a real stop
+    (the next `--install` or `Restart-Service GlazeIndex` should finish in a few seconds without "ending the process").
+  - **exFAT and ReFS drives** · `idea` · M. Today only NTFS; a folder walk plus `ReadDirectoryChangesW` would cover the rest.
+  - **Drives added while running** · `idea` · S. Watch for new volumes (`WM_DEVICECHANGE` / volume notifications).
+  - **Ranking from use** · `idea` · S. Frecency already lifts opened results in the launcher; the service could also learn
+    which folders are opened and boost their contents.
+  - **Search syntax** · `idea` · S–M. `ext:` / `*.zip`, `folder:` / `file:`, a path prefix (`d:\mods tooltips`).
 - **Paths and environment variables** · `idea` · M. Typing `%appdata%`, `C:\…` or `~` behaves like Win+R: expands the
   path, suggests child folders as you type, and opens the folder or file.
 - **Explorer windows and tabs** · `idea` · M. Search already-open Explorer paths using the Shell windows collection. Investigate
@@ -118,14 +139,11 @@ with providers and actions around it.
 - **Show hidden windows (manual)** · `idea` · S. A command that finds shell-cloaked, unmanaged windows on the current
   desktop without the remembered handles (for when the launcher wasn't running when GlazeWM died). Needs a filter for
   windows Windows cloaks on purpose (suspended UWP frames, input panels).
-- **Why GlazeWM died on 2026-11-27 22:51** · `bug` · needs a repro. Two minutes after the second monitor went away
-  and the launcher merged workspaces 21, 22 and 29. No crash event and nothing in `errors.log`. Watch for it after display changes.
 
 ## GlazeWM
 
-- **Mass Effect 2 window missing after launch** · `verify` · 2026-11-27. Happens through the Legendary
-  Edition launcher when GlazeWM is running. The live config now ignores `MassEffect2`; GlazeWM accepted
-  the reload and released the running game window. Confirm that a fresh launch displays the game.
+- **Mass Effect 2 window missing after launch** · `done` 2026-11-28. The live config ignores `MassEffect2`; the user
+  confirmed a fresh launch through Legendary Edition shows the game.
 - **Alt+N uses the wrong monitor after clicking an empty one** · `done` 2026-11-27. GlazeWM's focus follows windows, so
   clicking an empty desktop didn't change its focused monitor. The launcher now picks the monitor from the foreground window,
   or the cursor when the desktop is in front; the launcher's `@N` uses the same rule. Checked by the user with the real keys.
@@ -205,7 +223,9 @@ Items:
   meters show their full height next to a nearly full drive.
 - **Disk activity history** · `done` 2026-11-27. Show all visible drives in the Storage popup with a shared
   scale and history window, a full-width tile for one drive, and scrolling when the grid overflows.
-- **Space map, TreeSize-style** · `idea` · L. A separate helper program (not the collector: scanning terabytes is heavy and runs on
+- **Space map, TreeSize-style** · `ready` · M. 2026-11-28: the GlazeIndex service already keeps every folder's total
+  current (see [`indexer.md`](indexer.md)); what's left is a `children <path>` pipe request (items with sizes, largest
+  first) and the Zebar popup view. The collector or the popup would ask the pipe; no scan, no "Analyze" step. Earlier notes: a separate helper program (not the collector: scanning terabytes is heavy and runs on
   demand) that scans a drive, caches the result and shows where the space goes at a glance. Scan options to weigh: reading the NTFS
   master file table directly (very fast, needs admin) or ordinary directory listing (no admin, slower).
   Discussed with Codex (2026-11-27), not yet agreed in full:

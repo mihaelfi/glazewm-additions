@@ -1,0 +1,19 @@
+[package]
+name = "glaze-index"
+version = "0.1.0"
+edition = "2024"
+
+# The file index service (docs/indexer.md). No dependencies: plain Win32 calls.
+[[bin]]
+name = "GlazeIndex"
+path = "src/main.rs"
+
+# The measuring prototype it grew from; standalone, kept for re-measuring.
+[[bin]]
+name = "index-probe"
+path = "src/probe.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = true

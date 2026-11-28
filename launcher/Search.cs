@@ -26,6 +26,9 @@ internal sealed class ResultItem : INotifyPropertyChanged
     public int? SubtitleMatchStart { get; init; }
     /// <summary>The user's alias that found this result; shown as a tag after the title, which isn't highlighted then.</summary>
     public string? MatchedAlias { get; init; }
+    /// <summary>Title positions the provider already knows (GlazeIndex matches words anywhere in a path, which the
+    /// local matcher can't reproduce); used instead of matching the query again.</summary>
+    public int[]? FixedTitleMatches { get; init; }
 
     private int[]? _titleMatches;
     private int[]? _subtitleMatches;
@@ -37,7 +40,9 @@ internal sealed class ResultItem : INotifyPropertyChanged
 
     public void Highlight(string query)
     {
-        if (MatchedAlias is { } alias)
+        if (FixedTitleMatches is { } fixedMatches)
+            _titleMatches = fixedMatches;
+        else if (MatchedAlias is { } alias)
             _aliasMatches = Fuzzy.FindPositions(query, alias);
         else if (SubtitleMatchStart is { } start)
             _subtitleMatches = Fuzzy.FindPositions(query, Subtitle[start..]);

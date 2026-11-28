@@ -3,3 +3,5 @@
 /launcher/obj/
 /launcher/publish/
 /supervisor/target/
+/indexer/target/
+/indexer/out/

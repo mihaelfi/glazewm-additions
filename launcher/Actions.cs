@@ -69,6 +69,47 @@ internal sealed class Actions
         OpenShellItem(app.IconPath);
     }
 
+    private const int ErrorCancelled = 1223; // ERROR_CANCELLED: the UAC prompt was declined
+
+    /// <summary>
+    /// Starts the app elevated, like the Start menu's "Run as administrator": ShellExecute's "runas" on the AppsFolder
+    /// item, which runs the Start menu shortcut with its arguments and works for desktop-bridge packaged apps too. A Win32
+    /// app whose item refuses the verb falls back to its target. Off the UI thread, because ShellExecute only returns once
+    /// the UAC prompt is answered, and the supervisor ends a launcher whose UI doesn't respond for about 11 s.
+    /// A declined prompt is not an error.
+    /// </summary>
+    public Task RunAsAdmin(AppEntry app) => Task.Run(() =>
+    {
+        Log.Info($"run as administrator {app.Name} ({app.Id})");
+        int error = TryRunAs(app.IconPath);
+        if (error != 0 && error != ErrorCancelled && !app.IsPackaged && app.TargetPath is { } target && Path.IsPathFullyQualified(target))
+        {
+            Log.Info($"run as administrator: AppsFolder item refused (error {error}); trying {target}");
+            error = TryRunAs(target);
+        }
+        if (error == ErrorCancelled) Log.Info($"run as administrator {app.Name}: UAC prompt cancelled");
+        else if (error != 0) throw new System.ComponentModel.Win32Exception(error);
+    });
+
+    /// <summary>ShellExecute "runas"; returns the Win32 error, 0 on success. .NET runs it on an STA thread of its own.</summary>
+    private static int TryRunAs(string path, string arguments = "", string? workingDirectory = null)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(path, arguments)
+            {
+                UseShellExecute = true,
+                Verb = "runas",
+                WorkingDirectory = workingDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            })?.Dispose();
+            return 0;
+        }
+        catch (System.ComponentModel.Win32Exception e)
+        {
+            return e.NativeErrorCode;
+        }
+    }
+
     public static void OpenShellItem(string path)
     {
         Process.Start(new ProcessStartInfo(path)
@@ -76,6 +117,88 @@ internal sealed class Actions
             UseShellExecute = true,
             WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         })?.Dispose();
+    }
+
+    // ---- files and folders (GlazeIndex results) ------------------------------------
+
+    internal enum ShellKind { Terminal, PowerShell, Cmd }
+
+    private static readonly Lazy<string?> WindowsTerminalPath = new(() =>
+    {
+        var alias = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\WindowsApps\wt.exe");
+        return File.Exists(alias) ? alias : null;
+    });
+
+    private static readonly Lazy<string> PowerShellPath = new(() =>
+        (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Select(dir => Path.Combine(dir.Trim(), "pwsh.exe")).FirstOrDefault(File.Exists) ?? "powershell.exe");
+
+    public static bool HasWindowsTerminal => WindowsTerminalPath.Value is not null;
+
+    public static string PowerShellName =>
+        PowerShellPath.Value.EndsWith("pwsh.exe", StringComparison.OrdinalIgnoreCase) ? "PowerShell 7" : "Windows PowerShell";
+
+    /// <summary>Opens a file or folder with its default program (a folder in Explorer).</summary>
+    public static void OpenPath(string path)
+    {
+        Log.Info($"open {path}");
+        Process.Start(new ProcessStartInfo(path)
+        {
+            UseShellExecute = true,
+            WorkingDirectory = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? "",
+        })?.Dispose();
+    }
+
+    /// <summary>Starts an executable or script file elevated, in its own folder. A declined prompt is not an error.</summary>
+    public static Task RunFileAsAdmin(string path) => Task.Run(() =>
+    {
+        Log.Info($"run as administrator {path}");
+        int error = TryRunAs(path, "", Path.GetDirectoryName(path));
+        if (error == ErrorCancelled) Log.Info($"run as administrator {path}: UAC prompt cancelled");
+        else if (error != 0) throw new System.ComponentModel.Win32Exception(error);
+    });
+
+    /// <summary>
+    /// A terminal, PowerShell or Command Prompt in a folder. Normally the folder is the working directory (no quoting
+    /// to get wrong); elevated processes ignore that, so then the folder goes on the command line.
+    /// </summary>
+    public static Task OpenShell(string folder, ShellKind kind, bool admin)
+    {
+        var (exe, arguments) = kind switch
+        {
+            ShellKind.Terminal => (WindowsTerminalPath.Value ?? "wt.exe", admin ? "-d " + QuoteArgument(folder) : "-d ."),
+            ShellKind.PowerShell => (PowerShellPath.Value,
+                admin ? $"-NoExit -Command \"Set-Location -LiteralPath '{folder.Replace("'", "''")}'\"" : "-NoExit"),
+            _ => ("cmd.exe", admin ? $"/k cd /d \"{folder}\"" : ""),
+        };
+        Log.Info($"open {kind} in {folder}{(admin ? " as administrator" : "")}");
+        if (!admin)
+        {
+            Process.Start(new ProcessStartInfo(exe, arguments) { UseShellExecute = true, WorkingDirectory = folder })?.Dispose();
+            return Task.CompletedTask;
+        }
+        return Task.Run(() =>
+        {
+            int error = TryRunAs(exe, arguments, folder);
+            if (error == ErrorCancelled) Log.Info($"open {kind} as administrator: UAC prompt cancelled");
+            else if (error != 0) throw new System.ComponentModel.Win32Exception(error);
+        });
+    }
+
+    /// <summary>Quotes one argument for the usual (CommandLineToArgvW) rules: backslashes before the closing quote are doubled.</summary>
+    private static string QuoteArgument(string value)
+    {
+        int trailing = value.Length - value.TrimEnd('\\').Length;
+        return "\"" + value + new string('\\', trailing) + "\"";
+    }
+
+    public static void CopyText(string text)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try { System.Windows.Clipboard.SetText(text); return; }
+            catch (System.Runtime.InteropServices.COMException) when (attempt < 4) { Thread.Sleep(30); }
+        }
     }
 
     /// <summary>Moves a window to a workspace; following switches there and focuses it.</summary>

@@ -13,6 +13,12 @@ internal sealed class AppEntry
     public required string Id { get; init; }
     public string? TargetPath { get; init; }
 
+    /// <summary>A packaged (MSIX / Store) app: its ID is an AUMID such as "Pkg_hash!App".</summary>
+    public bool IsPackaged { get; init; }
+
+    /// <summary>The Start menu offers "Run as administrator" for it (see <see cref="ShellIndex"/>.CanElevate).</summary>
+    public bool CanRunAsAdmin { get; init; }
+
     /// <summary>Lower-case identifiers used to match this app to a running window
     /// (AUMID, exe name without extension, display name without spaces).</summary>
     public required HashSet<string> MatchIds { get; init; }
@@ -101,7 +107,11 @@ internal sealed class ShellIndex(StaWorker worker)
                 if (string.IsNullOrWhiteSpace(target)) target = null;
                 if ((!packaged.Success && IsStoreListing(target)) || !seen.Add(id)) continue;
 
-                result.Add(new AppEntry { Name = name, Id = id, TargetPath = target, MatchIds = BuildMatchIds(name, id, target) });
+                result.Add(new AppEntry
+                {
+                    Name = name, Id = id, TargetPath = target, MatchIds = BuildMatchIds(name, id, target),
+                    IsPackaged = packaged.Success, CanRunAsAdmin = CanElevate((object)item, id, target, packaged.Success),
+                });
             }
         }
         finally
@@ -132,6 +142,27 @@ internal sealed class ShellIndex(StaWorker worker)
             Log.Error("installed package inventory", error);
             return null;
         }
+    }
+
+    private static readonly string[] ElevatableExtensions = [".exe", ".bat", ".cmd", ".msc"];
+
+    /// <summary>
+    /// Whether the AppsFolder item has the "Run as administrator" verb, without building its context menu (about
+    /// 15 ms per item). Both rules matched the shell's verb list for all 295 entries on 2026-11-28:
+    /// a Win32 entry has it when its target is a program (not a .url, .pdf, .chm, Steam link, …); a packaged app has it
+    /// when <c>System.AppUserModel.HostEnvironment</c> is 2 (desktop-bridge / full-trust apps such as Terminal and
+    /// Notepad). UWP apps (Calculator, Settings) are 1 and can't be elevated.
+    /// </summary>
+    private static bool CanElevate(object shellItem, string id, string? target, bool packaged)
+    {
+        if (packaged)
+        {
+            try { return ((dynamic)shellItem).ExtendedProperty("System.AppUserModel.HostEnvironment") is object value && Convert.ToInt32(value) == 2; }
+            catch { return false; }
+        }
+        var program = target ?? id;
+        return Path.IsPathFullyQualified(program)
+            && ElevatableExtensions.Contains(Path.GetExtension(program), StringComparer.OrdinalIgnoreCase);
     }
 
     private static bool IsStoreListing(string? path)
