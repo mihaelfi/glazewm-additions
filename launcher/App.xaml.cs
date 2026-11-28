@@ -34,6 +34,8 @@ public partial class App : Application
     private UsageStore? _usage;
     private SettingsStore? _settings;
     private ShellIndex? _shellIndex;
+    private AliasBook? _aliases;
+    private SettingsWindow? _settingsWindow;
     private readonly CancellationTokenSource _cts = new();
 
     protected override void OnStartup(StartupEventArgs e)
@@ -108,12 +110,13 @@ public partial class App : Application
         _settings = new SettingsStore();
         _settings.Load();
         _settings.Watch();
-        var aliases = new AliasBook(_settings, target => DescribeTarget(shellIndex, target));
+        var aliases = _aliases = new AliasBook(_settings, target => DescribeTarget(shellIndex, target));
         _glaze = new GlazeClient();
         var identity = new WindowIdentity();
         var actions = new Actions(_glaze, _usage, identity);
         var index = new IndexClient();
         var files = new FileSearchProvider(index, shellIndex);
+        var openWith = OpenWith.Shared = new OpenWith(_settings, shellIndex, index);
         var search = new SearchEngine(
             [
                 new AppSearchProvider(shellIndex, identity, actions, aliases),
@@ -131,6 +134,8 @@ public partial class App : Application
 
         _window = new MainWindow(_glaze, shellIndex, search, actions, icons, new FolderBrowser(index));
         files.Changed += _window.RefreshResults;
+        openWith.CandidatesChanged += _window.RefreshActionInput;
+        _window.SettingsRequested += () => OpenSettings(null);
         var hwnd = _window.Prepare();
         HwndSource.FromHwnd(hwnd)!.AddHook(WndProc);
         RegisterHotkeyWithRetry(hwnd);
@@ -149,6 +154,7 @@ public partial class App : Application
         _ = Task.Run(() => PipeServer(_cts.Token));
 
         if (command is "show" or "toggle") _window.ShowLauncher();
+        else if (command is "settings") OpenSettings(null);
     }
 
     /// <summary>
@@ -283,7 +289,7 @@ public partial class App : Application
         foreach (var a in args)
         {
             var s = a.TrimStart('-', '/').ToLowerInvariant();
-            if (s is "toggle" or "show" or "hide" or "quit" or "reindex" or "sync") return s;
+            if (s is "toggle" or "show" or "hide" or "quit" or "reindex" or "sync" or "settings") return s;
         }
         return null;
     }
@@ -311,6 +317,10 @@ public partial class App : Application
             case "hide": _window?.HideLauncher(restoreFocus: true); break;
             case "reindex": _ = ReindexAsync(); break;
             case "sync": _ = _workspaces?.SyncNow(); break;
+            case "settings": OpenSettings(null); break;
+            // Debug helpers (pipe only): open a settings page ("settings:index") and render the settings window.
+            case var sp when sp.StartsWith("settings:", StringComparison.Ordinal): OpenSettings(sp[9..]); break;
+            case "snapshot:settings": _settingsWindow?.SaveSnapshot(Paths.File("settings-snapshot.png")); break;
             // Debug helpers (pipe only): the Alt+N and Alt+Shift+N actions, without the keyboard.
             case var f when f.StartsWith("ws:focus:", StringComparison.Ordinal) && int.TryParse(f[9..], out int fs) && fs is >= 1 and <= 9:
                 _ = _workspaces?.FocusSlot(fs); break;
@@ -344,6 +354,24 @@ public partial class App : Application
                 Dispatcher.BeginInvoke(new Action(() => Thread.Sleep(TimeSpan.FromSeconds(30))));
                 break;
         }
+    }
+
+    /// <summary>Shows the settings window (one at a time), on <paramref name="page"/> when given.</summary>
+    private void OpenSettings(string? page)
+    {
+        if (_settings is null || _aliases is null) return;
+        if (_window?.IsVisible == true) _window.HideLauncher(restoreFocus: false);
+        if (_settingsWindow is null)
+        {
+            _settingsWindow = new SettingsWindow(_settings, _aliases);
+            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            _settingsWindow.Show();
+        }
+        if (page is not null) _settingsWindow.ShowPage(page);
+        if (_settingsWindow.WindowState == WindowState.Minimized) _settingsWindow.WindowState = WindowState.Normal;
+        _settingsWindow.Activate();
+        // Our process may not own the foreground (the launcher has just hidden), so push it like the launcher does.
+        Native.ForceForeground(new System.Windows.Interop.WindowInteropHelper(_settingsWindow).Handle);
     }
 
     private Task ReindexAsync() => _shellIndex?.Refresh() ?? Task.CompletedTask;

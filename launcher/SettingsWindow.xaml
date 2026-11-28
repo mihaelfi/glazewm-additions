@@ -1,0 +1,335 @@
+<Window x:Class="GlazeLauncher.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Launcher settings" Width="940" Height="660" MinWidth="680" MinHeight="420"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13.5"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
+
+  <Window.Resources>
+    <Style TargetType="TextBlock">
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style x:Key="PageTitle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="22"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Margin" Value="0,0,0,6"/>
+    </Style>
+    <Style x:Key="Section" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+      <Setter Property="Margin" Value="0,18,0,6"/>
+    </Style>
+    <Style x:Key="Muted" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style x:Key="Label" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Margin" Value="0,10,0,3"/>
+    </Style>
+
+    <Style TargetType="TextBox">
+      <Setter Property="Background" Value="{StaticResource InputBrush}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+      <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}"/>
+      <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource SelectionBorderBrush}"/>
+      <Setter Property="Padding" Value="6,4"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TextBox">
+            <Border x:Name="Box" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="1" CornerRadius="5">
+              <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="Button">
+      <Setter Property="Background" Value="{StaticResource BadgeBrush}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+      <Setter Property="Padding" Value="12,5"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Box" Background="{TemplateBinding Background}" BorderBrush="{StaticResource SelectionBorderBrush}"
+                    BorderThickness="1" CornerRadius="5" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Box" Property="Background" Value="{StaticResource SelBrush}"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                <Setter TargetName="Box" Property="Opacity" Value="0.6"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="CheckBox">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="0,4"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Grid Background="Transparent">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Border x:Name="Box" Width="18" Height="18" CornerRadius="4" BorderThickness="1" VerticalAlignment="Top" Margin="0,1,0,0"
+                      Background="{StaticResource InputBrush}" BorderBrush="{StaticResource SelectionBorderBrush}">
+                <TextBlock x:Name="Mark" Text="&#xE73E;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                           Foreground="{StaticResource BgBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="Collapsed"/>
+              </Border>
+              <ContentPresenter Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Box" Property="Background" Value="{StaticResource AccentBrush}"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                <Setter TargetName="Mark" Property="Visibility" Value="Visible"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource MatchBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.5"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="ListBox">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+      <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+    </Style>
+    <Style TargetType="ListBoxItem">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Grid Background="Transparent" Margin="0,1">
+              <Border x:Name="Row" CornerRadius="6" BorderThickness="1"/>
+              <Border x:Name="Accent" Background="{StaticResource AccentBrush}" Width="2" Height="18" CornerRadius="1"
+                      Margin="3,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Opacity="0"/>
+              <ContentPresenter Margin="12,6,10,6"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Row" Property="Background" Value="{StaticResource HoverBrush}"/>
+              </Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="Row" Property="Background" Value="{StaticResource SelBrush}"/>
+                <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource SelectionBorderBrush}"/>
+                <Setter TargetName="Accent" Property="Opacity" Value="1"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Thin dark vertical scroll bars (the pages and lists scroll vertically only). -->
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="10"/>
+      <Setter Property="MinWidth" Value="10"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Track x:Name="PART_Track" IsDirectionReversed="True" Margin="2,2">
+              <Track.Thumb>
+                <Thumb>
+                  <Thumb.Template>
+                    <ControlTemplate TargetType="Thumb">
+                      <Border x:Name="Bar" CornerRadius="3" Background="{StaticResource SelectionBorderBrush}"/>
+                      <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                          <Setter TargetName="Bar" Property="Background" Value="{StaticResource MutedBrush}"/>
+                        </Trigger>
+                      </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                  </Thumb.Template>
+                </Thumb>
+              </Track.Thumb>
+            </Track>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- A list row with a title, a muted line under it and an optional tag at the right (SettingsWindow.Row). -->
+    <DataTemplate x:Key="RowTemplate">
+      <DockPanel>
+        <Border DockPanel.Dock="Right" Visibility="{Binding TagVisibility}" Background="{StaticResource BadgeBrush}"
+                CornerRadius="5" Padding="7,1" Margin="10,0,0,0" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Tag}" FontSize="11.5" Foreground="{StaticResource AccentBrush}" TextWrapping="NoWrap"/>
+        </Border>
+        <StackPanel>
+          <TextBlock Text="{Binding Title}" FontSize="14" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+          <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{StaticResource MutedBrush}"
+                     TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+        </StackPanel>
+      </DockPanel>
+    </DataTemplate>
+  </Window.Resources>
+
+  <Grid x:Name="Root">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="210"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- Pages -->
+    <Border Background="#11162A" BorderBrush="#232B4D" BorderThickness="0,0,1,0">
+      <DockPanel Margin="10,16,10,12">
+        <TextBlock DockPanel.Dock="Top" Text="GlazeLauncher" FontSize="12" FontWeight="SemiBold"
+                   Foreground="{StaticResource MutedBrush}" Margin="12,0,0,10"/>
+        <TextBlock DockPanel.Dock="Bottom" x:Name="FileHint" Style="{StaticResource Muted}" FontSize="11" Margin="12,0,0,0"
+                   Cursor="Hand" ToolTip="Open settings.json" MouseLeftButtonUp="FileHint_Click"/>
+        <ListBox x:Name="Pages" SelectionChanged="Pages_SelectionChanged">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="15" Width="26"
+                           Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding Title}" FontSize="14" VerticalAlignment="Center"/>
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="28,20,28,24">
+      <Grid>
+        <!-- ======================= Open with ======================= -->
+        <StackPanel x:Name="OpenWithPage">
+          <TextBlock Style="{StaticResource PageTitle}" Text="Open with"/>
+          <TextBlock Style="{StaticResource Muted}"
+                     Text="Your apps for Ctrl+K › Open with › on files, listed before the apps Windows offers. With “Use for Enter”, Enter opens those files with the app, and Ctrl+K keeps “Open with default app”. You can also add an app from the launcher: Open with › Choose an app…"/>
+          <TextBlock Style="{StaticResource Section}" Text="YOUR APPS"/>
+          <ListBox x:Name="RuleList" ItemTemplate="{StaticResource RowTemplate}" MaxHeight="260"
+                   SelectionChanged="RuleList_SelectionChanged"/>
+          <TextBlock x:Name="RuleEmpty" Style="{StaticResource Muted}" Margin="2,4,0,4"
+                     Text="No apps yet. Add one here, or from Choose an app… in the launcher."/>
+          <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+            <Button Content="Add app…" Click="AddRule_Click"/>
+            <Button x:Name="RemoveRule" Content="Remove" Click="RemoveRule_Click"/>
+            <Button x:Name="RuleUp" Content="Move up" Click="RuleUp_Click"/>
+            <Button x:Name="RuleDown" Content="Move down" Click="RuleDown_Click"/>
+          </StackPanel>
+
+          <StackPanel x:Name="RuleEditor" Margin="0,6,0,0">
+            <TextBlock Style="{StaticResource Section}" Text="SELECTED APP"/>
+            <TextBlock Style="{StaticResource Label}" Text="Name (shown in Open with)"/>
+            <TextBox x:Name="RuleName" LostKeyboardFocus="RuleField_LostFocus" KeyDown="Field_KeyDown"/>
+            <TextBlock Style="{StaticResource Label}" Text="Program"/>
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0" Click="BrowseExe_Click"/>
+              <TextBox x:Name="RuleExe" LostKeyboardFocus="RuleField_LostFocus" KeyDown="Field_KeyDown"/>
+            </DockPanel>
+            <TextBlock Style="{StaticResource Label}" Text="Arguments ({path}, {folder} and {name} are filled in; empty means &quot;{path}&quot;)"/>
+            <TextBox x:Name="RuleArgs" LostKeyboardFocus="RuleField_LostFocus" KeyDown="Field_KeyDown" FontFamily="Cascadia Mono, Consolas"/>
+            <TextBlock Style="{StaticResource Label}" Text="File types (for example: txt, md, json; * for every file)"/>
+            <TextBox x:Name="RuleExts" LostKeyboardFocus="RuleField_LostFocus" KeyDown="Field_KeyDown"/>
+            <CheckBox x:Name="RuleEnter" Margin="0,12,0,0" Click="RuleEnter_Click"
+                      Content="Use for Enter on these files (the first app with this on wins)"/>
+          </StackPanel>
+          <TextBlock x:Name="RuleStatus" Style="{StaticResource Muted}" Margin="0,12,0,0"/>
+        </StackPanel>
+
+        <!-- ======================= Aliases ======================= -->
+        <StackPanel x:Name="AliasPage" Visibility="Collapsed">
+          <TextBlock Style="{StaticResource PageTitle}" Text="Aliases"/>
+          <TextBlock Style="{StaticResource Muted}"
+                     Text="Extra names for apps, folders and commands: “codex” finds ChatGPT. An alias matches exactly or as a prefix. Add one in the launcher with Ctrl+K › Add alias… on a result."/>
+          <TextBlock Style="{StaticResource Section}" Text="ALL ALIASES"/>
+          <ListBox x:Name="AliasList" ItemTemplate="{StaticResource RowTemplate}" MaxHeight="320"
+                   SelectionChanged="AliasList_SelectionChanged"/>
+          <TextBlock x:Name="AliasEmpty" Style="{StaticResource Muted}" Margin="2,4,0,4" Text="No aliases yet."/>
+          <StackPanel x:Name="AliasEditor" Margin="0,6,0,0">
+            <TextBlock Style="{StaticResource Label}" Text="Alias (↵ renames)"/>
+            <DockPanel>
+              <Button DockPanel.Dock="Right" x:Name="RemoveAlias" Content="Remove" Margin="8,0,0,0" Click="RemoveAlias_Click"/>
+              <Button DockPanel.Dock="Right" Content="Rename" Margin="8,0,0,0" Click="RenameAlias_Click"/>
+              <TextBox x:Name="AliasName" KeyDown="AliasName_KeyDown"/>
+            </DockPanel>
+          </StackPanel>
+          <TextBlock x:Name="AliasStatus" Style="{StaticResource Muted}" Margin="0,12,0,0"/>
+        </StackPanel>
+
+        <!-- ======================= File index ======================= -->
+        <StackPanel x:Name="IndexPage" Visibility="Collapsed">
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Content="Refresh" Margin="0" VerticalAlignment="Center" Click="RefreshIndex_Click"/>
+            <TextBlock Style="{StaticResource PageTitle}" Text="File index"/>
+          </DockPanel>
+          <TextBlock x:Name="IndexStatus" Style="{StaticResource Muted}"
+                     Text="Settings of the GlazeIndex service, which finds files and folders on your drives."/>
+          <StackPanel x:Name="IndexBody">
+            <TextBlock Style="{StaticResource Section}" Text="DRIVES"/>
+            <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,6"
+                       Text="Only the drives that are on are indexed. Turning one on scans it (seconds for most drives)."/>
+            <StackPanel x:Name="DriveList"/>
+
+            <TextBlock Style="{StaticResource Section}" Text="EXCLUDED FOLDERS"/>
+            <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,6"
+                       Text="Their contents never show in search; their size still counts in the folders above them."/>
+            <ListBox x:Name="ExcludedList" ItemTemplate="{StaticResource RowTemplate}" MaxHeight="200"/>
+            <TextBlock x:Name="ExcludedEmpty" Style="{StaticResource Muted}" Margin="2,4,0,4" Text="None."/>
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+              <Button Content="Add folder…" Click="AddExcluded_Click"/>
+              <Button Content="Remove" Click="RemoveExcluded_Click"/>
+            </StackPanel>
+
+            <TextBlock Style="{StaticResource Section}" Text="PUSHED DOWN IN SEARCH"/>
+            <TextBlock Style="{StaticResource Label}" Margin="0,0,0,3"
+                       Text="Folder names anywhere (everything under them ranks lower), separated by commas"/>
+            <TextBox x:Name="Demoted" TextWrapping="Wrap" AcceptsReturn="False" MinHeight="54" VerticalContentAlignment="Top"/>
+            <TextBlock Style="{StaticResource Label}" Text="Folder names directly under a drive root"/>
+            <TextBox x:Name="DemotedAtRoot" TextWrapping="Wrap" AcceptsReturn="False" MinHeight="40"/>
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+              <Button Content="Save names" Click="SaveDemoted_Click"/>
+            </StackPanel>
+            <CheckBox x:Name="SearchHidden" Margin="0,16,0,0" Click="SearchHidden_Click"
+                      Content="Show hidden and system files in search (ranked lower)"/>
+          </StackPanel>
+          <TextBlock x:Name="IndexMessage" Style="{StaticResource Muted}" Margin="0,12,0,0"/>
+        </StackPanel>
+      </Grid>
+    </ScrollViewer>
+  </Grid>
+</Window>

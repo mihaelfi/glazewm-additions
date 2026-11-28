@@ -131,6 +131,17 @@ internal static class Native
         DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref colorRef, sizeof(int));
     }
 
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20, DWMWA_CAPTION_COLOR = 35;
+
+    /// <summary>A dark title bar in the launcher's navy, for normal windows (the settings window).</summary>
+    public static void DarkTitleBar(IntPtr hwnd)
+    {
+        int on = 1;
+        DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref on, sizeof(int));
+        int caption = 0x15 | (0x1B << 8) | (0x30 << 16); // #151b30 as COLORREF (0x00BBGGRR)
+        DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref caption, sizeof(int));
+    }
+
     // ---- process identity ----------------------------------------------------
     private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 

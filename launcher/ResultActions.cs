@@ -19,6 +19,9 @@ internal enum ActionFlags
     KeepOpen = 16,
     /// <summary>A row that only informs (e.g. why an alias can't be saved); Enter does nothing.</summary>
     Disabled = 32,
+    /// <summary>A submenu whose rows have no shortcuts and cost something to build (Open with ›, which asks Windows):
+    /// the footer and the shortcut lookup don't open it.</summary>
+    NoShortcuts = 64,
 }
 
 /// <summary>A key with modifiers that runs an action without opening the action list.</summary>
@@ -108,7 +111,8 @@ internal sealed record ResultAction(
         if (depth >= 2) return null;
         foreach (var action in actions)
         {
-            if (action.Children is { } children && FindExact(children(), chord, allowConfirm, depth + 1) is { } hit) return hit;
+            if (action.Children is { } children && !action.Flags.HasFlag(ActionFlags.NoShortcuts)
+                && FindExact(children(), chord, allowConfirm, depth + 1) is { } hit) return hit;
         }
         return null;
     }
@@ -269,16 +273,19 @@ internal static class ActionKits
         CopyPath(path),
     ];
 
-    /// <summary>Actions for a file from the file index: open, its folder in Explorer (Ctrl+Enter), run elevated
-    /// (Ctrl+Shift+Enter, programs only), and a shell in its folder, normal and elevated.</summary>
+    /// <summary>Actions for a file from the file index: open (or the user's Enter app, see <see cref="OpenWith"/>), its
+    /// folder in Explorer (Ctrl+Enter), Open with ›, run elevated (Ctrl+Shift+Enter, programs only), and a shell in its
+    /// folder, normal and elevated.</summary>
     public static IReadOnlyList<ResultAction> File(string path)
     {
         var folder = Path.GetDirectoryName(path) ?? path;
-        var list = new List<ResultAction>(10)
-        {
-            new("Open", "\uE8E5", () => { Actions.OpenPath(path); return Task.CompletedTask; }),
-            ShowInFolder(path) with { Shortcut = KeyChord.CtrlEnter },
-        };
+        var open = new ResultAction("Open", "\uE8E5", () => { Actions.OpenPath(path); return Task.CompletedTask; });
+        var openWith = OpenWith.Shared;
+        // A rule that is the Enter action for this extension comes first ("Open with VS Code"), the default app after it.
+        var list = new List<ResultAction>(10);
+        list.AddRange(openWith?.DefaultActions(path, open) ?? [open]);
+        list.Add(ShowInFolder(path) with { Shortcut = KeyChord.CtrlEnter });
+        if (openWith is not null) list.Add(openWith.Menu(path));
         if (Runnable.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
             list.Add(new("Run as administrator", AdminGlyph, () => Actions.RunFileAsAdmin(path), Shortcut: KeyChord.CtrlShiftEnter));
         list.Add(ShellMenu(folder, "Open shell in its folder", mainShortcuts: false));

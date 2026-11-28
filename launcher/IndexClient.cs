@@ -20,7 +20,7 @@ internal sealed record IndexListing(string Path, int Count, IReadOnlyList<IndexH
 /// Client for the GlazeIndex service (indexer/, docs/indexer.md) on <c>\\.\pipe\GlazeIndex</c>: one request line, one
 /// JSON reply per connection. When the service isn't running, it backs off for a while instead of waiting on every key.
 /// </summary>
-internal sealed class IndexClient
+internal sealed partial class IndexClient
 {
     private const string PipeName = "GlazeIndex";
     private static readonly TimeSpan Backoff = TimeSpan.FromSeconds(15);

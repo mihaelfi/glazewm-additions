@@ -94,12 +94,25 @@ keyboard. VS Code's quick open lists every prefix when you type `?`.
 - **Numbered rows in the action list** · `done` 2026-11-28, confirmed by the user (user request). Ctrl+1…9 and
   Ctrl+0 run the first ten rows as shown, numbered on the left. On the result list Ctrl+1…9 still sends to a workspace.
 - **Bold matched letters** · `done` 2026-11-28 (user request). Bold instead of SemiBold (`HighlightedTextBlock.cs`).
-- **Launcher settings window** · `idea` · L (user request). A normal window (the popup closes on blur), same theme, opened
+- **Launcher settings window** · `doing` (user request). Built 2026-11-28 with the pages whose settings already
+  existed: Open with, Aliases, File index (see `launcher.md`, Settings window); `verify` with the real keyboard and mouse.
+  The rest, agreed with the user on 2026-11-28 for a later session (each needs launcher wiring first):
+  - **General page** · `idea` · M. The hotkey: `hotkey` is read but Alt+Space is fixed; apply it (re-register, with a
+    "press the new keys" field) and say when another program holds it.
+  - **Search page** · `idea` · M. Providers on/off and order, section sizes, scope prefixes; all hard-coded in `Search.cs`
+    today.
+  - **Workspaces page** · `idea` · S. A read-only overview (the user's choice): each monitor with its group and
+    workspaces, a Sync now button, and the settle watch on/off (needs a setting in `WorkspaceManager`).
+  The proposal was: A normal window (the popup closes on blur), same theme, opened
   from a "Launcher settings" command and Ctrl+, in the launcher. Pages: General (hotkey), Search (providers on/off and
   order, section sizes, prefixes), Aliases (list, edit, remove), Open with (rules below), File index (GlazeIndex drives,
   excluded folders, demoted names through its pipe; replaces "Index settings UI"), Workspaces. It writes `settings.json`,
   which the launcher already watches.
-- **Open with, including custom apps** · `idea` · M (user request; replaces "Open with… for files" below). Ctrl+K ›
+- **Open with, including custom apps** · `done` 2026-11-28, `verify` with the real keyboard and real apps (user
+  request; flow agreed with the user as proposed; files only, folders weren't wanted). See `launcher.md`, Result actions.
+  Follow-ups: **Choose an app ranking** · `idea` · S: indexed copies of the same exe crowd the list (`notepad` → eight
+  Wine copies); prefer Program Files and the user's apps, or group copies by name. **Folder rules** · `idea` · S: Open with
+  › on folders (VS Code on a folder) if wanted later. The proposal was: Ctrl+K ›
   Open with ›: the user's rules for this extension first, then the apps Windows registers for it (`SHAssocEnumHandlers`, the
   list Windows' own Open with shows), then "Choose an app…", which searches apps and indexed `.exe` files and then offers
   "Always offer for .txt". A rule: name, exe, arguments with `{path}` `{folder}` `{name}` (default `"{path}"`), extensions
@@ -165,7 +178,8 @@ keyboard. VS Code's quick open lists every prefix when you type `?`.
     which folders are opened and boost their contents.
   - **Search syntax** · `done` 2026-11-28. `*.zip` / `ext:`, `file:` / `folder:`, `in:D:\Mods`, `sort:size`, typed into the
     query (the launcher gets them as is) or as request fields.
-  - **Index settings UI** · `idea` · M. The service's settings (drives on/off, excluded folders, demoted names,
+  - **Index settings UI** · `done` 2026-11-28 as the launcher settings window's File index page (drives, excluded
+    folders, demoted names, hidden files; `create_journals` isn't shown). The service's settings (drives on/off, excluded folders, demoted names,
     `search_hidden`, `create_journals`) are only reachable through the pipe and the CLI (`--enable D:`, `--exclude …`).
     A page in the Zebar settings popup or a launcher command; `status` already lists every drive with what a UI needs.
   - **Launcher: exclude from a result** · `idea` · S. Ctrl+K on a folder result › "Exclude from the index" (`exclude` request).

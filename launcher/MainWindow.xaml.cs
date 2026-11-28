@@ -48,6 +48,19 @@ public partial class MainWindow : Window
 
     public IntPtr Handle => _hwnd;
 
+    /// <summary>Ctrl+, : the app opens the settings window (which hides the launcher).</summary>
+    public event Action? SettingsRequested;
+
+    /// <summary>A text-entry level's rows have new data (Open with › Choose an app… got indexed .exe files): rebuild
+    /// them, keeping the selected row. Safe from any thread.</summary>
+    public void RefreshActionInput() => Dispatcher.BeginInvoke(() =>
+    {
+        if (!IsVisible || !InActionMode || _levels.Count == 0 || _levels[^1].Input is null) return;
+        int selected = ActionList.SelectedIndex;
+        RenderActions();
+        if (selected > 0 && selected < ActionList.Items.Count) ActionList.SelectedIndex = selected;
+    });
+
     /// <summary>A provider has new results for the current query (file search): re-run it, keeping the selection.
     /// Safe from any thread.</summary>
     public void RefreshResults() => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(keepSelection: true); });
@@ -325,7 +338,7 @@ public partial class MainWindow : Window
             if (action.IsInert) continue; // e.g. "Run as administrator" on a Store app: listed in Ctrl+K with the reason
             if (action.Shortcut is { } chord) parts.Add($"{chord.Label} {action.Title}");
             else if (action.IsSubmenu && action.Hint is { } hint) parts.Add($"{hint} {action.Title}");
-            else if (action.Children is { } children)
+            else if (action.Children is { } children && !action.Flags.HasFlag(ActionFlags.NoShortcuts))
             {
                 // A submenu without a summary hint (Open shell ›): list its own shortcuts.
                 try
@@ -788,6 +801,9 @@ public partial class MainWindow : Window
                 if (InActionMode) Back();
                 else if (Browsing) CloseBrowse(restore: true);
                 else HideLauncher(restoreFocus: true);
+                return true;
+            case Key.OemComma when ctrl && !shift:
+                SettingsRequested?.Invoke();
                 return true;
             case Key.S when ctrl && Browsing && !InActionMode:
                 if (shift) _browser.ReverseSort();

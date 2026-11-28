@@ -228,6 +228,7 @@ internal sealed class CommandSearchProvider(Actions actions, AliasBook aliases) 
         new("Pause / resume GlazeWM", "GlazeWM", "", "wm-toggle-pause"),
         new("Sync workspaces to monitors", "Launcher · Ctrl+Alt+R", "",
             null, "sync"),
+        new("Launcher settings", "Launcher · Ctrl+,", "", null, "settings"),
         new("Re-index apps", "Launcher", "", null, "reindex"),
         new("Quit launcher", "Launcher", "", null, "quit"),
     ];

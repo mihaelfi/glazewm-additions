@@ -70,6 +70,8 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
   the same tier, and works with `@N` (`codex @3`). A name match of the same quality wins over the alias. When the alias is
   what found the result, it shows as a small tag after the title (`ChatGPT [codex]`) with the typed part highlighted.
   Windows and browser tabs can't have aliases (they come and go; an app alias covers its windows).
+- **Launcher settings:** Ctrl+, in the launcher, the "Launcher settings" command, or `GlazeLauncher.exe --settings` opens
+  a normal window (the popup closes on blur, so settings can't live there). See Settings window.
 - **Store suggestions never show.** Only apps installed for this user are results; Windows Search's Store ads for apps you
   don't have (Netflix and the like) are filtered out with the Store stubs (checked 2026-11-27: `netflix` finds nothing).
 
@@ -97,7 +99,7 @@ submenu without a summary hint, such as Open shell ›, its rows' shortcuts).
 | With `@N` in the query | App: Open on workspace N (↵, Shift+↵ stay); window: Move to workspace N (↵, Shift+↵ stay) |
 | Folder, command | Their default action (Open in File Explorer / Run) |
 | Indexed folder | Open (↵) · Open shell here › (Terminal Ctrl+↵, Terminal as administrator Ctrl+Shift+↵, PowerShell 7, Command Prompt, each also as administrator) · Open file location · Copy path |
-| Indexed file | Open (↵) · Open file location (Ctrl+↵) · Run as administrator (Ctrl+Shift+↵; `.exe`, `.bat`, `.cmd`, `.com`, `.msi`) · Open shell in its folder › (the same six rows) · Copy path |
+| Indexed file | Open (↵), or Open with *your Enter app* (↵) then Open with default app · Open file location (Ctrl+↵) · Open with › (see below) · Run as administrator (Ctrl+Shift+↵; `.exe`, `.bat`, `.cmd`, `.com`, `.msi`) · Open shell in its folder › (the same six rows) · Copy path |
 | App, folder, command | Also: Add alias… (text entry) · Aliases › (when it has any; Enter on one removes it) |
 | Go to workspace, browser tab | One default action each |
 
@@ -140,23 +142,43 @@ submenu without a summary hint, such as Open shell ›, its rows' shortcuts).
   row; typing `admin` in Ctrl+K lists all elevated ones (the filter searches submenus); Shift+↵ on a normal row also runs its
   elevated twin. Files open the shell in the file's own folder, so two `GlazeIndex.exe` results open in their two different folders.
 - Close, End task, Open file location and the alias actions don't count towards frecency; workspace actions record usage for the target workspace.
+- **Open with ›** (files; `OpenWith.cs`, design agreed with the user 2026-11-28): the user's apps for the extension first
+  ("your app", from `openWith` in `settings.json`; a missing program shows as a muted "not found" row), then the apps
+  Windows recommends for it (`SHAssocEnumHandlers` with `ASSOC_FILTER_RECOMMENDED`, the list of Windows' own Open with,
+  Store apps included, run through `IAssocHandler.Invoke`; detail "Windows"; an app the user has a rule for isn't
+  repeated), then **Choose an app…**: a text field that lists a typed full path to an `.exe`, matching Win32 apps from the
+  catalog (shortcut target or a known-folder AppsFolder ID; `WindowsApps` programs are skipped, Windows' list covers
+  Store apps) and up to 8 indexed `.exe` files (`<text> *.exe`, fetched in the background; the rows rebuild when they
+  arrive). Enter on a candidate opens **Open once** · **Always offer for .md** · **Always offer, and use for Enter on .md**;
+  the last two save a rule and open the file. A rule that is the Enter action makes the file's first two actions
+  "Open with X" (↵) and "Open with default app". The first Enter rule for the extension wins, then one for `*`; a new Enter
+  rule goes to the top of the list. Windows' handlers are enumerated on the UI thread and cached for a minute per
+  extension. The submenu carries `ActionFlags.NoShortcuts`, so the footer and Ctrl-chord lookup never build it (only
+  opening it, or filtering Ctrl+K, does).
 - **Text-entry levels and keep-open actions** are general: a `ResultAction` with `Input` builds its rows from the typed text,
   `ActionFlags.KeepOpen` runs an action without hiding the launcher (then searches `ThenQuery`, or rebuilds the list), and
   `ActionFlags.Disabled` marks an informational row.
 
 ## Settings file
 
-`%LOCALAPPDATA%\GlazeLauncher\settings.json` (`Settings.cs`). `aliases` is in use (`Aliases.cs`); `hotkey` and
-`indexedFolders` are read but not used yet.
+`%LOCALAPPDATA%\GlazeLauncher\settings.json` (`Settings.cs`). `aliases` (`Aliases.cs`) and `openWith` (`OpenWith.cs`) are in
+use; `hotkey` and `indexedFolders` are read but not used yet. The settings window edits it (see below).
 
 ```json
 {
   "version": 1,
   "hotkey": "Alt+Space",
   "aliases": { "codex": "app:<AppsFolder ID>" },
-  "indexedFolders": [ { "path": "C:/launcher shortcuts", "badge": "Shortcut" } ]
+  "indexedFolders": [ { "path": "C:/launcher shortcuts", "badge": "Shortcut" } ],
+  "openWith": [
+    { "name": "VS Code", "exe": "C:\\…\\Code.exe", "arguments": "\"{path}\"", "extensions": [".md", ".txt"], "enter": true }
+  ]
 }
 ```
+
+- `openWith`: in order. `arguments` fills `{path}`, `{folder}` (a drive root as `D:\.`) and `{name}` (default `"{path}"`);
+  the program starts in the file's folder. `extensions` are stored lower case with the dot (`md`, `*.md` → `.md`); `*`
+  means every file. Rules without `exe` are dropped on load.
 
 - Alias targets are a result's usage key (`app:…`, `folder:…`, `cmd:<title>`), the same IDs `usage.json` uses. Hand
   edits may use any case; `AliasBook` normalizes. An alias whose target is gone (an uninstalled app) is ignored.
@@ -165,6 +187,25 @@ submenu without a summary hint, such as Open shell ›, its rows' shortcuts).
 - Edits by hand are picked up by a file watcher (300 ms debounce; the launcher's own writes are ignored). A file with a
   JSON error is logged and left alone: the last good settings stay, and `SettingsStore.Update` refuses to save until it's fixed.
 - Saves are atomic (temp file, then replace).
+
+## Settings window
+
+`SettingsWindow.xaml(.cs)`: a normal, resizable window in the launcher's palette with a dark title bar
+(`Native.DarkTitleBar`). One at a time (`App.OpenSettings`); opening it hides the launcher; Esc closes it unless a text
+field has focus. GlazeWM tiles it like any window. Every change is saved at once; "Edit settings.json ›" at the bottom left
+opens the file. A change to `settings.json` from elsewhere (a hand edit, Ctrl+K › Add alias) reloads the pages unless a
+field is being typed in. Pages (agreed with the user 2026-11-28; General, Search and Workspaces come later, see the backlog):
+
+- **Open with:** the rules as a list (name, file types, program, an "↵ Enter" tag), Add app… (a file picker; the name
+  comes from the exe's description), Remove, Move up / down, and an editor for the selected rule: name, program (Browse…),
+  arguments, file types (`txt, md` or `*`), "Use for Enter on these files". A field saves when it loses focus or on Enter.
+- **Aliases:** every alias with what it points to (`→ ChatGPT`, kind tag), rename (↵ or Rename; refused when another
+  result has that alias) and remove, through `AliasBook`.
+- **File index:** GlazeIndex's settings through its pipe (`IndexClient.Settings.cs`: `status`, `settings`,
+  `settings.set`, `drive`, `exclude`): drives as check boxes with file system, free space, state and entries (unsupported
+  ones greyed with the reason), excluded folders (Add folder… / Remove), demoted names anywhere and at the drive root
+  (comma separated, Save names), and "Show hidden and system files in search". Without the service it says so; Refresh
+  retries at once (a fresh client, no back-off). Changes apply for every user of the PC (the service's rule).
 
 ## Workspace manager
 
@@ -220,6 +261,9 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
 | `SearchProviders.cs` | `ISearchProvider` contract and the compiled-in app, window, folder, command and go-to-workspace providers. A `Pinned` result is shown above all ranked results. `SearchContext.AliasHits` holds the query's alias matches (computed once per search); `WithAlias` picks the better of name and alias match |
 | `ResultActions.cs` | `ResultAction` (title, glyph, callback, optional shortcut, submenu, flags, Shift variant), `KeyChord`, `ActionContext` (snapshot + resolved `@N`), and `ActionKits`: the shared app, window and workspace-slot action sets providers compose |
 | `Settings.cs` | `LauncherSettings` and `SettingsStore`: load, watch, atomic save of `settings.json` |
+| `OpenWith.cs` | Open with ›: rules for a file, the Enter rule, Windows' handlers (`SHAssocEnumHandlers`, `IAssocHandler`), Choose an app… candidates, `AddRule`; `OpenWith.Shared` is what `ActionKits.File` uses |
+| `SettingsWindow.xaml(.cs)` | The settings window (see Settings window) |
+| `IndexClient.Settings.cs` | GlazeIndex settings requests for the File index page (`IndexClient` is `partial`) |
 | `Aliases.cs` | `AliasBook`: alias index built lazily from the current settings (no events or locks), exact/prefix matching per query, add, move and remove through `SettingsStore.Update` |
 | `BrowserTabSearchProvider.cs` | Refreshes the Chrome and Edge tab cache on a background thread using only their accessibility tab strips. Selects a tab by its runtime ID within the original browser window. |
 | `Actions.cs` | What actions do: `Run` (records frecency, logs failures), launch, `LaunchOn`, `RunAsAdmin`, `FocusOrCycle`, `MoveWindow`, `CloseWindow`, `EndTask`, `ShowInExplorer`, commands. Open app and window results share a focus path that runs `focus --workspace N` for hidden workspaces, restores a minimized window (Win32 `SW_RESTORE`, then waits up to 600 ms for GlazeWM to stop reporting it as minimized, because focusing it earlier leaves GlazeWM's focus on the previous window), then runs `focus --container-id`. After an `@N` launch, the next matching `window_managed` window (within 15 s) gets `move --workspace N` and uses the same focus path if following. |
@@ -276,12 +320,15 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
     **Windows Error Reporting is disabled on this PC** (`HKLM\…\Windows Error Reporting\Disabled = 1`), so that layer does
     nothing here; it helps on PCs where it's on. The `--restart` rule keeps the two from ending up with two copies.
   - Doesn't cover native crashes, hangs or being killed on this PC; the supervisor does.
-- **Command line:** `GlazeLauncher.exe --toggle|--show|--hide|--reindex|--sync|--quit` forwards the command to the running instance over the pipe. With no argument a second start toggles.
+- **Command line:** `GlazeLauncher.exe --toggle|--show|--hide|--reindex|--sync|--settings|--quit` forwards the command to the running instance over the pipe. With no argument a second start toggles.
 - **Debug pipe commands** (send them with a `NamedPipeClientStream` to `GlazeLauncher` opened with `PipeDirection.Out`,
   since the server is in-only and `InOut` gets "access denied"; not available as exe flags): `query:<text>` types a query,
   `enter`, `enter:ctrl` or `enter:shift` runs what Enter would (nothing while hidden), `actions` opens the
   action list (Ctrl+K), `back` goes back a level, `key:<chord>` presses a key through the normal key handling (`key:ctrl+shift+3`,
-  `key:ctrl+w`, `key:right`, `key:escape`; while the list is open, `query:` sets its filter), and `snapshot` renders the window to `%LOCALAPPDATA%\GlazeLauncher\snapshot.png`.
+  `key:ctrl+w`, `key:right`, `key:escape`; while the list is open, `query:` sets its filter), and `snapshot` renders the window to `%LOCALAPPDATA%\GlazeLauncher\snapshot.png`. `settings` opens the settings window,
+  `settings:openwith|aliases|index` opens it on a page, and `snapshot:settings` renders it to `settings-snapshot.png`.
+  The pipe lower-cases every line, so a typed path arrives in lower case. The settings window is a normal window, so UI
+  Automation from the agent's shell can press its buttons (`InvokePattern`), which is how Remove was tested.
   `ws:focus:N` and `ws:move:N` run the Alt+N and Alt+Shift+N actions (they use the current foreground window, so make
   sure the right window is in front). For crash-recovery tests: `debug:throw` raises an error on the UI thread, and `debug:crash` crashes a background thread
   (the launcher really ends; a replacement starts only after the first 60 s). `debug:hang` blocks the UI thread for 30 s,
@@ -343,6 +390,13 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
   a launch. Not checked: whether GlazeWM, which runs unelevated, can tile or move the elevated window (Windows blocks
   input from lower-integrity processes).
 
+- **Open with and the settings window** (2026-11-28) were checked through the pipe, snapshots and UI Automation only (see
+  the change log). Not yet checked with the real keyboard and mouse: Add app… and Browse… (file pickers), editing rule
+  fields, rename and remove of an alias, drive check boxes, Add folder… and Save names on the File index page, and
+  opening a file through a Windows handler (`IAssocHandler.Invoke`) and through a rule with a real app.
+- **Choose an app… lists every indexed copy of an exe** (`notepad` lists eight Wine `notepad.exe` files from Steam's
+  Proton folders). Ranking or grouping by folder is in the backlog.
+
 **Testing tip:** a throwaway WinForms window (`[System.Windows.Forms.Application]::Run($form)` from a background PowerShell)
 is a safe target for window tests. To see a `snapshot`, have GlazeWM copy it out of the real `%LOCALAPPDATA%`
 (`command shell-exec --hide-window cmd.exe /c copy /y %LOCALAPPDATA%\GlazeLauncher\snapshot.png <folder>`), because the
@@ -371,12 +425,28 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-action-list-20261128-155246\`: before the shell submenu, numbered rows and bold matches
 - `.glzr\launcher\before-folder-browse-20261128-160057\`: before folder browsing
 - `.glzr\launcher\before-scopes-20261128-162650\`: before sections, scope chips and prefixes
+- `.glzr\launcher\before-open-with-settings-20261128-164636\`: before Open with and the settings window
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-28
+- **Open with › and the settings window** (user request; the flow and the page list agreed with the user first). New
+  `OpenWith.cs` (rules, Windows' handlers, Choose an app…), `SettingsWindow.xaml(.cs)` (Open with, Aliases and File index
+  pages), `IndexClient.Settings.cs` (`IndexClient` made `partial`). `Settings.cs`: `OpenWithRule`, `openWith`.
+  `ResultActions.cs`: `ActionKits.File` starts with the Enter rule and adds Open with ›; `ActionFlags.NoShortcuts`, which
+  `ResultAction.FindExact` and the footer respect. `MainWindow.xaml.cs`: Ctrl+, (`SettingsRequested`) and
+  `RefreshActionInput`. `App.xaml.cs`: `OpenSettings`, `--settings`, pipe `settings`, `settings:<page>`,
+  `snapshot:settings`. `SearchProviders.cs`: the "Launcher settings" command. `Native.cs`: `DarkTitleBar`. Installed through
+  the supervisor (this build also carried the recently opened files and Exclude from the index changes, logged separately). Checked with pipe snapshots: `AGENTS.md` › Ctrl+K shows Open
+  with ›, which lists Visual Studio Code, Antigravity and Notepad (Windows) and Choose an app…; `notepad` there lists
+  indexed exes (the `WindowsApps` Notepad entry was removed after this check); a typed full path to `where.exe` › Always offer, and use for
+  Enter on .md saved `{"name": "where", …, "enter": true}`, opened the file, and then Ctrl+K began with "Open with where ·
+  your Enter app" and "Open with default app", the footer read "↵ Open with where", and Open with › listed it first as
+  "your app · ↵ default"; the settings window's three pages rendered (the File index page with C, D, E on, F and H off, G
+  greyed as exFAT); Remove (pressed through UI Automation) deleted the test rule and kept the alias; Ctrl+, opened the
+  window. Left: General (hotkey), Search and Workspaces pages.
 - **`^` selects the Tabs scope** (user request; Tabs had no prefix). `Search.cs` (`Scopes.List`) and the All footer.
   Checked with a pipe snapshot: `^youtube` opens Tabs with the three YouTube tabs.
 - **Sections, scope chips and prefixes** (user request; prefixes agreed with the user after checking PowerToys Run's
