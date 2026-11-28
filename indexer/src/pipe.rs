@@ -1,9 +1,8 @@
 //! The named pipe `\\.\pipe\GlazeIndex`. One request line per connection, one JSON reply, then the server closes it.
+//! The requests are in `api.rs` and docs/indexer.md.
 //!
-//!   search<TAB>limit<TAB>text   ->  {"query":..,"matches":..,"ms":..,"ready":..,"results":[{"path","name","folder","size","modified","score","highlight":[start,len]}]}
-//!   status                      ->  {"volumes":[{"drive","state","entries","memory"}],"skipped":[..],"private_memory":..,"min_query":..}
-//!
-//! Only SYSTEM, administrators and interactive (logged-on, local) users may connect; remote clients are refused.
+//! Only SYSTEM, administrators and interactive (logged-on, local) users may connect; remote clients are refused. Any of
+//! them may change settings; each change is logged with the user and program that made it.
 
 use std::ptr::null_mut;
 use std::sync::Arc;
@@ -13,6 +12,7 @@ use crate::win::{self, OwnedHandle, Sddl};
 
 pub const NAME: &str = r"\\.\pipe\GlazeIndex";
 const SDDL: &str = "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)";
+const MAX_REQUEST: usize = 64 * 1024;
 
 pub fn serve(engine: Arc<Engine>) {
     let Some(descriptor) = Sddl::new(SDDL) else {
@@ -24,7 +24,7 @@ pub fn serve(engine: Arc<Engine>) {
         let attributes = descriptor.attributes();
         let handle = unsafe {
             win::CreateNamedPipeW(name.as_ptr(), win::PIPE_ACCESS_DUPLEX, win::PIPE_REJECT_REMOTE_CLIENTS,
-                win::PIPE_UNLIMITED_INSTANCES, 64 * 1024, 4 * 1024, 0, &attributes)
+                win::PIPE_UNLIMITED_INSTANCES, 64 * 1024, 64 * 1024, 0, &attributes)
         };
         if handle == win::INVALID_HANDLE {
             crate::log!("pipe: CreateNamedPipe failed (error {}); retrying in 5 s", win::last_error());
@@ -39,10 +39,12 @@ pub fn serve(engine: Arc<Engine>) {
     }
 }
 
-fn answer(engine: &Engine, pipe: OwnedHandle) {
+fn answer(engine: &Arc<Engine>, pipe: OwnedHandle) {
     let Some(request) = read_line(&pipe) else { return };
-    let reply = handle(engine, &request);
-    let bytes = reply.as_bytes();
+    let handle = pipe.0;
+    let reply = crate::api::handle(engine, &request, &move || win::pipe_client(handle));
+    let mut bytes = reply.into_bytes();
+    bytes.push(b'\n');
     let mut written_total = 0usize;
     while written_total < bytes.len() {
         let mut written = 0u32;
@@ -58,8 +60,8 @@ fn answer(engine: &Engine, pipe: OwnedHandle) {
 
 fn read_line(pipe: &OwnedHandle) -> Option<String> {
     let mut data = Vec::new();
-    let mut buffer = [0u8; 1024];
-    while data.len() < 8192 {
+    let mut buffer = [0u8; 4096];
+    while data.len() < MAX_REQUEST {
         let mut read = 0u32;
         let ok = unsafe { win::ReadFile(pipe.0, buffer.as_mut_ptr(), buffer.len() as u32, &mut read, null_mut()) };
         if ok == 0 || read == 0 { break; }
@@ -69,17 +71,4 @@ fn read_line(pipe: &OwnedHandle) -> Option<String> {
     let end = data.iter().position(|&b| b == b'\n').unwrap_or(data.len());
     let line = String::from_utf8_lossy(&data[..end]).trim_end_matches('\r').to_owned();
     (!line.is_empty()).then_some(line)
-}
-
-fn handle(engine: &Engine, request: &str) -> String {
-    let mut parts = request.splitn(3, '\t');
-    match parts.next() {
-        Some("search") => {
-            let limit = parts.next().and_then(|l| l.parse().ok()).unwrap_or(20);
-            engine.search_json(parts.next().unwrap_or(""), limit)
-        }
-        Some("status") => engine.status_json(),
-        Some("ping") => "{\"ok\":true}".into(),
-        _ => "{\"error\":\"unknown request\"}".into(),
-    }
 }

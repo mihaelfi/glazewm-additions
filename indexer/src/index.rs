@@ -1,25 +1,25 @@
 //! One volume's index: flat arrays, one slot per file or folder.
 //!
 //! Entry i's name is `names[name_off[i] .. name_off[i] + name_len[i]]` (UTF-8). Parents are entry numbers; the root is its
-//! own parent. `size` is a file's size, or for a folder the total of everything under it, kept current as changes come in.
-//! Deleted entries stay as tombstones (DELETED) until the next compaction.
+//! own parent. `size` is a file's size, or for a folder the total of everything under it; `files` is 1 for a file, or for
+//! a folder the number of files under it. Both are kept current as changes come in. Deleted entries stay as tombstones
+//! (DELETED) until the next compaction.
+
+use std::collections::HashSet;
 
 use crate::ntfs::{Change, EXTEND_RECORD, REASON_CLOSE, REASON_CREATE, REASON_DELETE, REASON_RENAME_NEW, ROOT_RECORD};
+use crate::settings::Rules;
 
 pub const DIR: u8 = 1;
 pub const HIDDEN: u8 = 2;
 pub const SYSTEM: u8 = 4;
-/// Inside a place search should push down: node_modules, .git, AppData, Windows, caches of package managers, ...
+/// Inside a place search pushes down (the settings' demoted names: node_modules, .git, AppData, Windows, ...).
 pub const NOISY: u8 = 8;
 pub const DELETED: u8 = 16;
+/// Inside an excluded folder (or the excluded folder itself): never listed or found; its size still counts above it.
+pub const EXCLUDED: u8 = 32;
 
 const NONE: u32 = u32::MAX;
-
-/// Folder names that make everything below them noisy, anywhere on the drive.
-const NOISY_ANYWHERE: &[&str] = &["node_modules", ".git", ".svn", ".hg", "appdata", "__pycache__", "site-packages", ".cargo",
-    ".rustup", ".nuget", ".npm", ".gradle", ".m2", ".vs", ".venv", "$recycle.bin", "system volume information"];
-/// Folder names that are noisy only directly under the drive root.
-const NOISY_AT_ROOT: &[&str] = &["windows", "programdata", "recovery", "$windows.~ws", "$windows.~bt", "$winreagent", "msocache"];
 
 pub struct Index {
     pub letter: char,
@@ -28,6 +28,7 @@ pub struct Index {
     pub name_len: Vec<u16>,
     pub parent: Vec<u32>,
     pub size: Vec<u64>,
+    pub files: Vec<u32>,
     pub modified: Vec<u64>,
     pub flags: Vec<u8>,
     /// Entry -> MFT record number.
@@ -49,6 +50,7 @@ impl Index {
             name_len: Vec::with_capacity(entries),
             parent: Vec::with_capacity(entries),
             size: Vec::with_capacity(entries),
+            files: Vec::with_capacity(entries),
             modified: Vec::with_capacity(entries),
             flags: Vec::with_capacity(entries),
             record: Vec::with_capacity(entries),
@@ -69,6 +71,7 @@ impl Index {
             self.name_len.reserve_exact(more);
             self.parent.reserve_exact(more);
             self.size.reserve_exact(more);
+            self.files.reserve_exact(more);
             self.modified.reserve_exact(more);
             self.flags.reserve_exact(more);
             self.record.reserve_exact(more);
@@ -86,6 +89,7 @@ impl Index {
         self.names.extend_from_slice(name);
         self.parent.push(parent);
         self.size.push(size);
+        self.files.push(if flags & DIR != 0 { 0 } else { 1 });
         self.modified.push(modified);
         self.flags.push(flags);
         self.record.push(record);
@@ -137,29 +141,62 @@ impl Index {
         depth
     }
 
+    /// Whether entry `i` is `ancestor` or below it.
+    pub fn is_under(&self, i: usize, ancestor: u32) -> bool {
+        if ancestor == self.root { return true; }
+        let mut at = i as u32;
+        for _ in 0..512 {
+            if at == ancestor { return true; }
+            if at == self.root { return false; }
+            at = self.parent[at as usize];
+        }
+        false
+    }
+
     pub fn entry_for_record(&self, record: u64) -> Option<u32> {
         self.by_record.get(record as usize).copied().filter(|&e| e != NONE)
     }
 
+    /// The live entries directly inside folder `e` (a scan of the parent array: a few ms).
+    pub fn children(&self, e: u32) -> Vec<u32> {
+        (0..self.len() as u32)
+            .filter(|&i| self.parent[i as usize] == e && i != self.root && self.flags[i as usize] & DELETED == 0)
+            .collect()
+    }
+
+    /// The entry for a path on this drive (`D:\Games\Mods`, any case); the root for `D:\`.
+    pub fn resolve(&self, path: &str) -> Option<u32> {
+        let p = path.trim().replace('/', "\\");
+        let mut chars = p.chars();
+        if !chars.next()?.eq_ignore_ascii_case(&self.letter) || chars.next()? != ':' { return None; }
+        let mut at = self.root;
+        for component in p[2..].split('\\').filter(|c| !c.is_empty()) {
+            at = (0..self.len() as u32).find(|&i| {
+                self.parent[i as usize] == at && i != self.root && self.flags[i as usize] & DELETED == 0
+                    && self.name(i as usize).eq_ignore_ascii_case(component)
+            }).or_else(|| (0..self.len() as u32).find(|&i| {
+                // Names outside ASCII: compare lower-cased.
+                self.parent[i as usize] == at && i != self.root && self.flags[i as usize] & DELETED == 0
+                    && self.name(i as usize).to_lowercase() == component.to_lowercase()
+            }))?;
+        }
+        Some(at)
+    }
+
     pub fn memory(&self) -> usize {
         self.names.capacity() + 4 * self.name_off.capacity() + 2 * self.name_len.capacity() + 4 * self.parent.capacity()
-            + 8 * self.size.capacity() + 8 * self.modified.capacity() + self.flags.capacity() + 4 * self.record.capacity()
-            + 4 * self.by_record.capacity()
+            + 8 * self.size.capacity() + 4 * self.files.capacity() + 8 * self.modified.capacity() + self.flags.capacity()
+            + 4 * self.record.capacity() + 4 * self.by_record.capacity()
     }
 
-    fn own_name_noisy(&self, i: usize) -> bool {
-        let name = self.name(i);
-        let at_root = self.parent[i] == self.root;
-        NOISY_ANYWHERE.iter().any(|n| name.eq_ignore_ascii_case(n))
-            || (at_root && NOISY_AT_ROOT.iter().any(|n| name.eq_ignore_ascii_case(n)))
-    }
-
-    /// After a scan or load: noisy flags (inherited down the tree) and folder totals.
-    pub fn finish(&mut self) {
-        // Noisy: 0 unknown, 1 noisy, 2 clean. Walk up to the first known ancestor, then assign down the walked path.
+    /// After a scan, a load, or a settings change: the noisy and excluded flags (inherited down the tree), folder totals
+    /// and file counts.
+    pub fn refresh(&mut self, rules: &Rules) {
         let n = self.len();
+        let excluded: HashSet<u32> = rules.excluded_on(self.letter).filter_map(|p| self.resolve(p)).collect();
+        // Per entry: 0 unknown, else 1 | NOISY | EXCLUDED. Walk up to the first known ancestor, then assign down the walk.
         let mut state = vec![0u8; n];
-        state[self.root as usize] = 2;
+        state[self.root as usize] = 1;
         let mut chain = Vec::new();
         for i in 0..n {
             let mut at = i as u32;
@@ -168,35 +205,38 @@ impl Index {
                 chain.push(at);
                 at = self.parent[at as usize];
             }
-            let mut noisy = state[at as usize] == 1;
+            let mut inherited = state[at as usize] & (NOISY | EXCLUDED);
             for &e in chain.iter().rev() {
-                noisy = noisy || self.own_name_noisy(e as usize);
-                state[e as usize] = if noisy { 1 } else { 2 };
+                let e = e as usize;
+                if self.flags[e] & DIR != 0 && rules.demotes(self.name(e), self.parent[e] == self.root) { inherited |= NOISY; }
+                if excluded.contains(&(e as u32)) { inherited |= EXCLUDED; }
+                state[e] = 1 | inherited;
             }
         }
         for i in 0..n {
-            if state[i] == 1 { self.flags[i] |= NOISY; } else { self.flags[i] &= !NOISY; }
+            self.flags[i] = (self.flags[i] & !(NOISY | EXCLUDED)) | (state[i] & (NOISY | EXCLUDED));
         }
 
         for i in 0..n {
-            if self.flags[i] & DIR != 0 { self.size[i] = 0; }
+            if self.flags[i] & DIR != 0 { self.size[i] = 0; self.files[i] = 0; } else { self.files[i] = 1; }
         }
         for i in 0..n {
-            if self.flags[i] & (DIR | DELETED) != 0 || self.size[i] == 0 { continue; }
+            if self.flags[i] & (DIR | DELETED) != 0 { continue; }
             let bytes = self.size[i] as i64;
-            self.add_to_ancestors(self.parent[i], bytes);
+            self.add_to_ancestors(self.parent[i], bytes, 1);
         }
     }
 
-    /// Adds `delta` to a folder and every folder above it.
-    fn add_to_ancestors(&mut self, from: u32, delta: i64) {
-        if delta == 0 { return; }
+    /// Adds to a folder's and every folder above it's totals.
+    fn add_to_ancestors(&mut self, from: u32, bytes: i64, files: i64) {
+        if bytes == 0 && files == 0 { return; }
         let mut at = from;
         for _ in 0..512 {
-            let slot = &mut self.size[at as usize];
-            *slot = slot.wrapping_add_signed(delta);
+            let i = at as usize;
+            self.size[i] = self.size[i].wrapping_add_signed(bytes);
+            self.files[i] = (self.files[i] as i64 + files).max(0) as u32;
             if at == self.root { break; }
-            at = self.parent[at as usize];
+            at = self.parent[i];
         }
     }
 
@@ -209,18 +249,29 @@ impl Index {
         self.names.extend_from_slice(name.as_bytes());
     }
 
-    fn parent_entry(&self, record: u64) -> u32 {
-        self.entry_for_record(record).filter(|&e| self.flags[e as usize] & DIR != 0).unwrap_or(self.root)
+    /// The folder entry for a parent record, or None when it isn't indexed (e.g. `\$Extend\$Deleted`, where NTFS parks
+    /// files that are deleted while still open; their names are hex file ids).
+    fn parent_entry(&self, record: u64) -> Option<u32> {
+        if record as usize == ROOT_RECORD { return Some(self.root); }
+        self.entry_for_record(record).filter(|&e| self.flags[e as usize] & DIR != 0)
     }
 
-    fn noisy_for(&self, parent: u32, name: &str) -> bool {
-        self.flags[parent as usize] & NOISY != 0
-            || NOISY_ANYWHERE.iter().any(|n| name.eq_ignore_ascii_case(n))
-            || (parent == self.root && NOISY_AT_ROOT.iter().any(|n| name.eq_ignore_ascii_case(n)))
+    /// The noisy and excluded flags an entry gets from its parent, its own name and (folders) the excluded paths.
+    fn inherited_flags(&self, entry: usize, rules: &Rules) -> u8 {
+        let parent = self.parent[entry];
+        let mut flags = self.flags[parent as usize] & (NOISY | EXCLUDED);
+        if self.flags[entry] & DIR != 0 {
+            if rules.demotes(self.name(entry), parent == self.root) { flags |= NOISY; }
+            if flags & EXCLUDED == 0 && rules.excluded_on(self.letter).next().is_some() {
+                let path = self.path(entry).to_lowercase();
+                if rules.excluded_on(self.letter).any(|p| p == path) { flags |= EXCLUDED; }
+            }
+        }
+        flags
     }
 
     /// Applies one journal record. Returns whether the index changed.
-    pub fn apply(&mut self, change: &Change) -> bool {
+    pub fn apply(&mut self, change: &Change, rules: &Rules) -> bool {
         let record = change.record;
         if (record as usize) < 16 && record as usize != ROOT_RECORD { return false; }
         if change.parent as u32 == EXTEND_RECORD || ((change.parent as usize) < 16 && change.parent as usize != ROOT_RECORD) { return false; }
@@ -234,26 +285,28 @@ impl Index {
             Some(e) => {
                 let e = e as usize;
                 if change.reason & (REASON_RENAME_NEW | REASON_CREATE) != 0 {
-                    let new_parent = self.parent_entry(change.parent);
+                    // Moved somewhere we don't index (a delete of an open file moves it into \$Extend\$Deleted).
+                    let Some(new_parent) = self.parent_entry(change.parent) else { return self.remove_record(record) };
                     if new_parent != self.parent[e] && new_parent as usize != e {
-                        let total = self.size[e] as i64;
-                        self.add_to_ancestors(self.parent[e], -total);
+                        let (bytes, files) = (self.size[e] as i64, self.files[e] as i64);
+                        self.add_to_ancestors(self.parent[e], -bytes, -files);
                         self.parent[e] = new_parent;
-                        self.add_to_ancestors(new_parent, total);
+                        self.add_to_ancestors(new_parent, bytes, files);
                     }
                     self.set_name(e, &change.name);
-                    let noisy = self.noisy_for(self.parent[e], &change.name);
-                    if noisy { self.flags[e] |= NOISY; } else { self.flags[e] &= !NOISY; }
+                    let inherited = self.inherited_flags(e, rules);
+                    self.flags[e] = (self.flags[e] & !(NOISY | EXCLUDED)) | inherited;
                 }
                 e
             }
             None => {
                 // A file we haven't seen: created, renamed in, or its create came before our scan position.
                 if change.reason & (REASON_CREATE | REASON_RENAME_NEW | REASON_CLOSE) == 0 { return false; }
-                let parent = self.parent_entry(change.parent);
-                let mut flags = if is_dir { DIR } else { 0 };
-                if self.noisy_for(parent, &change.name) { flags |= NOISY; }
-                let e = self.push(change.name.as_bytes(), parent, 0, 0, flags, record as u32);
+                let Some(parent) = self.parent_entry(change.parent) else { return false };
+                let e = self.push(change.name.as_bytes(), parent, 0, 0, if is_dir { DIR } else { 0 }, record as u32) as usize;
+                let inherited = self.inherited_flags(e, rules);
+                self.flags[e] |= inherited;
+                if !is_dir { self.add_to_ancestors(parent, 0, 1); }
                 if record as usize >= self.by_record.len() {
                     let needed = record as usize + 1;
                     if needed > self.by_record.capacity() {
@@ -261,16 +314,15 @@ impl Index {
                     }
                     self.by_record.resize(needed, NONE);
                 }
-                self.by_record[record as usize] = e;
-                e as usize
+                self.by_record[record as usize] = e as u32;
+                e
             }
         };
 
         let attributes = change.info.map(|(_, _, a)| a).unwrap_or(change.attributes);
-        let mut flags = self.flags[entry] & !(HIDDEN | SYSTEM | DIR);
+        let mut flags = self.flags[entry] & !(HIDDEN | SYSTEM);
         if attributes & 2 != 0 { flags |= HIDDEN; }
         if attributes & 4 != 0 { flags |= SYSTEM; }
-        if attributes & 0x10 != 0 { flags |= DIR; }
         self.flags[entry] = flags;
 
         if let Some((size, modified, _)) = change.info {
@@ -278,7 +330,7 @@ impl Index {
             if flags & DIR == 0 {
                 let delta = size as i64 - self.size[entry] as i64;
                 self.size[entry] = size;
-                self.add_to_ancestors(self.parent[entry], delta);
+                self.add_to_ancestors(self.parent[entry], delta, 0);
             }
         }
         true
@@ -287,8 +339,8 @@ impl Index {
     fn remove_record(&mut self, record: u64) -> bool {
         let Some(e) = self.entry_for_record(record) else { return false };
         let e = e as usize;
-        let total = self.size[e] as i64;
-        self.add_to_ancestors(self.parent[e], -total);
+        let (bytes, files) = (self.size[e] as i64, self.files[e] as i64);
+        self.add_to_ancestors(self.parent[e], -bytes, -files);
         self.flags[e] |= DELETED;
         self.by_record[record as usize] = NONE;
         self.garbage += self.name_len[e] as usize;
@@ -316,7 +368,8 @@ impl Index {
             let parent = if p == NONE { next.root } else { p };
             let start = self.name_off[i] as usize;
             let name = &self.names[start..start + self.name_len[i] as usize];
-            next.push(name, parent, self.size[i], self.modified[i], self.flags[i], self.record[i]);
+            let e = next.push(name, parent, self.size[i], self.modified[i], self.flags[i], self.record[i]);
+            next.files[e as usize] = self.files[i];
         }
         next.rebuild_record_map();
         *self = next;

@@ -1,38 +1,49 @@
-//! Which drives get indexed: fixed, NTFS, and not on a USB bus. Found at runtime, so it works on any PC.
+//! The drives this PC has, found at runtime so it works on any PC: what each is, and whether it can be indexed (NTFS).
+//! Which ones actually are is the user's choice in the settings (nothing by default).
 
 use std::ptr::null_mut;
 
 use crate::ntfs::Volume;
 use crate::win;
 
-pub struct Candidate {
+#[derive(Clone)]
+pub struct Drive {
     pub letter: char,
     pub serial: u32,
+    pub label: String,
+    pub file_system: String,
+    pub usb: bool,
+    pub removable: bool,
+    pub total: u64,
+    pub free: u64,
+    /// Why it can't be indexed (not NTFS), or None.
+    pub unsupported: Option<String>,
 }
 
-/// Every drive letter with the reason it was skipped, or a candidate.
-pub fn find() -> Vec<Result<Candidate, String>> {
+/// Fixed and removable drives (not network, optical or RAM disks).
+pub fn detect() -> Vec<Drive> {
     let mask = unsafe { win::GetLogicalDrives() };
     let mut out = Vec::new();
     for bit in 0..26 {
         if mask & (1 << bit) == 0 { continue; }
         let letter = (b'A' + bit as u8) as char;
         let root = win::wide(&format!("{letter}:\\"));
-        if unsafe { win::GetDriveTypeW(root.as_ptr()) } != win::DRIVE_FIXED { continue; }
+        let kind = unsafe { win::GetDriveTypeW(root.as_ptr()) };
+        if kind != win::DRIVE_FIXED && kind != win::DRIVE_REMOVABLE { continue; }
         let mut serial = 0u32;
+        let mut label = [0u16; 64];
         let mut fs = [0u16; 32];
         let ok = unsafe {
-            win::GetVolumeInformationW(root.as_ptr(), null_mut(), 0, &mut serial, null_mut(), null_mut(), fs.as_mut_ptr(), fs.len() as u32)
+            win::GetVolumeInformationW(root.as_ptr(), label.as_mut_ptr(), label.len() as u32, &mut serial, null_mut(), null_mut(), fs.as_mut_ptr(), fs.len() as u32)
         };
-        if ok == 0 { out.push(Err(format!("{letter}: skipped: no volume information (error {})", win::last_error()))); continue; }
-        let fs_name = String::from_utf16_lossy(&fs[..fs.iter().position(|&c| c == 0).unwrap_or(fs.len())]);
-        if fs_name != "NTFS" { out.push(Err(format!("{letter}: skipped: {fs_name}, not NTFS"))); continue; }
-        match bus_type(letter) {
-            Some(win::BUS_TYPE_USB) => { out.push(Err(format!("{letter}: skipped: USB drive"))); continue; }
-            None => { out.push(Err(format!("{letter}: skipped: can't read its bus type"))); continue; }
-            _ => {}
-        }
-        out.push(Ok(Candidate { letter, serial }));
+        if ok == 0 { continue; } // no medium (an empty card reader)
+        let text = |b: &[u16]| String::from_utf16_lossy(&b[..b.iter().position(|&c| c == 0).unwrap_or(b.len())]);
+        let file_system = text(&fs);
+        let (mut available, mut total, mut free) = (0u64, 0u64, 0u64);
+        unsafe { win::GetDiskFreeSpaceExW(root.as_ptr(), &mut available, &mut total, &mut free) };
+        let usb = bus_type(letter) == Some(win::BUS_TYPE_USB);
+        let unsupported = (file_system != "NTFS").then(|| format!("{file_system} isn't supported yet (NTFS only)"));
+        out.push(Drive { letter, serial, label: text(&label), file_system, usb, removable: kind == win::DRIVE_REMOVABLE, total, free, unsupported });
     }
     out
 }

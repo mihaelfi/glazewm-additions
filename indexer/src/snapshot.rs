@@ -91,7 +91,9 @@ pub fn load(folder: &Path, serial: u32, letter: char) -> Option<Saved> {
     if name_off.iter().zip(&name_len).any(|(&o, &l)| o as usize + l as usize > names.len()) { return None; }
     if std::str::from_utf8(&names).is_err() { return None; }
     drop(data);
-    let mut index = Index { letter, names, name_off, name_len, parent, size, modified, flags, record, by_record: Vec::new(), root, garbage, deleted };
+    // File counts aren't saved: Index::refresh (run after every load) recomputes them with the totals.
+    let files = vec![0u32; n];
+    let mut index = Index { letter, names, name_off, name_len, parent, size, files, modified, flags, record, by_record: Vec::new(), root, garbage, deleted };
     index.rebuild_record_map();
     Some(Saved { index, journal_id, next_usn })
 }

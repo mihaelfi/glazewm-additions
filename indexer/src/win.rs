@@ -29,6 +29,7 @@ pub const ERROR_JOURNAL_DELETE_IN_PROGRESS: u32 = 1178;
 pub const ERROR_JOURNAL_NOT_ACTIVE: u32 = 1179;
 pub const ERROR_JOURNAL_ENTRY_DELETED: u32 = 1181;
 
+pub const DRIVE_REMOVABLE: u32 = 2;
 pub const DRIVE_FIXED: u32 = 3;
 pub const BUS_TYPE_USB: u32 = 7;
 
@@ -154,6 +155,9 @@ unsafe extern "system" {
     pub fn GetCurrentThread() -> Handle;
     pub fn CancelSynchronousIo(thread: Handle) -> i32;
     pub fn OpenProcess(access: u32, inherit: i32, pid: u32) -> Handle;
+    pub fn GetDiskFreeSpaceExW(root: *const u16, available: *mut u64, total: *mut u64, free: *mut u64) -> i32;
+    pub fn GetNamedPipeClientProcessId(pipe: Handle, pid: *mut u32) -> i32;
+    pub fn QueryFullProcessImageNameW(process: Handle, flags: u32, name: *mut u16, size: *mut u32) -> i32;
     pub fn FileTimeToLocalFileTime(utc: *const u64, local: *mut u64) -> i32;
     pub fn FileTimeToSystemTime(filetime: *const u64, time: *mut SystemTime) -> i32;
     pub fn TerminateProcess(process: Handle, exit_code: u32) -> i32;
@@ -182,6 +186,8 @@ unsafe extern "system" {
     pub fn ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl: *const u16, revision: u32, descriptor: *mut *mut c_void, size: *mut u32) -> i32;
     pub fn OpenProcessToken(process: Handle, access: u32, token: *mut Handle) -> i32;
     pub fn LookupPrivilegeValueW(system: *const u16, name: *const u16, luid: *mut Luid) -> i32;
+    pub fn GetTokenInformation(token: Handle, class: u32, info: *mut c_void, length: u32, returned: *mut u32) -> i32;
+    pub fn LookupAccountSidW(system: *const u16, sid: *mut c_void, name: *mut u16, name_size: *mut u32, domain: *mut u16, domain_size: *mut u32, kind: *mut u32) -> i32;
     pub fn AdjustTokenPrivileges(token: Handle, disable_all: i32, new: *const TokenPrivileges, length: u32, previous: *mut c_void, returned: *mut u32) -> i32;
 }
 
@@ -228,6 +234,39 @@ impl Drop for Sddl {
 
 unsafe impl Send for Sddl {}
 unsafe impl Sync for Sddl {}
+
+/// "DOMAIN\user via program.exe (pid N)" for the process on the other end of a pipe, for the settings log.
+pub fn pipe_client(pipe: Handle) -> String {
+    let mut pid = 0u32;
+    if unsafe { GetNamedPipeClientProcessId(pipe, &mut pid) } == 0 { return "unknown client".into(); }
+    let process = unsafe { OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, 0, pid) };
+    if process == 0 { return format!("pid {pid}"); }
+    let process = OwnedHandle(process);
+    let mut exe = [0u16; 512];
+    let mut exe_len = exe.len() as u32;
+    let program = if unsafe { QueryFullProcessImageNameW(process.0, 0, exe.as_mut_ptr(), &mut exe_len) } != 0 {
+        let full = String::from_utf16_lossy(&exe[..exe_len as usize]);
+        full.rsplit('\\').next().unwrap_or(&full).to_string()
+    } else { "?".into() };
+    let mut user = String::from("?");
+    unsafe {
+        let mut token = 0;
+        if OpenProcessToken(process.0, 0x8 /* TOKEN_QUERY */, &mut token) != 0 {
+            let token = OwnedHandle(token);
+            let mut buffer = [0u8; 256];
+            let mut returned = 0u32;
+            if GetTokenInformation(token.0, 1 /* TokenUser */, buffer.as_mut_ptr() as *mut c_void, buffer.len() as u32, &mut returned) != 0 {
+                let sid = *(buffer.as_ptr() as *const *mut c_void);
+                let (mut name, mut domain) = ([0u16; 128], [0u16; 128]);
+                let (mut name_len, mut domain_len, mut kind) = (128u32, 128u32, 0u32);
+                if LookupAccountSidW(std::ptr::null(), sid, name.as_mut_ptr(), &mut name_len, domain.as_mut_ptr(), &mut domain_len, &mut kind) != 0 {
+                    user = format!("{}\\{}", String::from_utf16_lossy(&domain[..domain_len as usize]), String::from_utf16_lossy(&name[..name_len as usize]));
+                }
+            }
+        }
+    }
+    format!("{user} via {program} (pid {pid})")
+}
 
 /// The local time of a file's last write, "2026-11-28 11:31", to tell builds apart.
 pub fn file_time(path: &std::path::Path) -> String {

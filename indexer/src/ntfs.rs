@@ -117,11 +117,12 @@ pub fn query_journal(volume: &Volume) -> Result<Journal, u32> {
 
 /// Returns the volume's journal, creating one (32 MB, 8 MB growth, as Windows does for the system drive) when it has
 /// none. An existing journal is never changed.
-pub fn ensure_journal(volume: &Volume) -> Result<Journal, String> {
+pub fn ensure_journal(volume: &Volume, create: bool) -> Result<Journal, String> {
     for attempt in 0..10 {
         match query_journal(volume) {
             Ok(j) => return Ok(j),
             Err(win::ERROR_JOURNAL_DELETE_IN_PROGRESS) => std::thread::sleep(Duration::from_secs(1 + attempt)),
+            Err(win::ERROR_JOURNAL_NOT_ACTIVE) if !create => return Err("no USN change journal, and creating one is turned off (create_journals)".into()),
             Err(win::ERROR_JOURNAL_NOT_ACTIVE) => {
                 let mut input = [0u8; 16];
                 input[0..8].copy_from_slice(&(32u64 << 20).to_le_bytes());
@@ -276,7 +277,7 @@ pub struct ScanStats {
 }
 
 /// Reads the whole MFT and builds the volume's index (folder totals and flags included).
-pub fn scan(volume: &Volume) -> Result<(Index, ScanStats), String> {
+pub fn scan(volume: &Volume, rules: &crate::settings::Rules) -> Result<(Index, ScanStats), String> {
     let started = Instant::now();
     let info = ntfs_info(volume)?;
     let (record_size, cluster) = (info.record_size, info.bytes_per_cluster);
@@ -362,11 +363,28 @@ pub fn scan(volume: &Volume) -> Result<(Index, ScanStats), String> {
         }
     }
 
-    // Keep named, in-use records; skip the NTFS metafiles (records 0-15 except the root, and $Extend's contents).
+    // Keep named, in-use records; skip the NTFS metafiles (records 0-15 except the root) and everything under $Extend,
+    // e.g. \$Extend\$Deleted, where files deleted while open wait under hex names.
+    let mut metadata = vec![0u8; total]; // 0 unknown, 1 normal, 2 under $Extend
+    let mut chain = Vec::new();
+    for r in 0..total {
+        if metadata[r] != 0 { continue; }
+        let mut at = r;
+        let verdict = loop {
+            if at == ROOT_RECORD || at >= total || !in_use[at] || chain.len() > 512 { break 1; }
+            if metadata[at] != 0 { break metadata[at]; }
+            if at == EXTEND_RECORD as usize { break 2; }
+            chain.push(at);
+            at = parent[at] as usize;
+        };
+        for &c in &chain { metadata[c] = verdict; }
+        chain.clear();
+        if metadata[r] == 0 { metadata[r] = verdict; }
+    }
     let mut by_record = vec![u32::MAX; total];
     let mut count = 0u32;
     for r in 0..total {
-        if !in_use[r] || name_rank[r] == 0 || (r < 16 && r != ROOT_RECORD) || parent[r] == EXTEND_RECORD { continue; }
+        if !in_use[r] || name_rank[r] == 0 || (r < 16 && r != ROOT_RECORD) || metadata[r] == 2 { continue; }
         by_record[r] = count;
         count += 1;
     }
@@ -384,6 +402,6 @@ pub fn scan(volume: &Volume) -> Result<(Index, ScanStats), String> {
     }
     drop((parent, name_at, name_len, name_rank, size, modified, flags, in_use, names));
     index.set_record_map(by_record);
-    index.finish();
+    index.refresh(rules);
     Ok((index, ScanStats { entries: n, time: started.elapsed() }))
 }

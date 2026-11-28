@@ -63,7 +63,7 @@ pub fn run_engine(echo: bool) -> std::sync::Arc<Engine> {
     if let Err(e) = ensure_folders() { eprintln!("{e}"); }
     log::init(base_folder().join("index.log"), echo);
     log!("starting GlazeIndex {}, build of {} (pid {})", env!("CARGO_PKG_VERSION"), win::build_time(), std::process::id());
-    let engine = Engine::start(data_folder());
+    let engine = Engine::start(base_folder(), data_folder());
     let for_pipe = engine.clone();
     std::thread::Builder::new().name("pipe".into()).spawn(move || pipe::serve(for_pipe)).expect("spawn pipe server");
     engine

@@ -103,7 +103,14 @@ with providers and actions around it.
   - **Drives added while running** · `idea` · S. Watch for new volumes (`WM_DEVICECHANGE` / volume notifications).
   - **Ranking from use** · `idea` · S. Frecency already lifts opened results in the launcher; the service could also learn
     which folders are opened and boost their contents.
-  - **Search syntax** · `idea` · S–M. `ext:` / `*.zip`, `folder:` / `file:`, a path prefix (`d:\mods tooltips`).
+  - **Search syntax** · `done` 2026-11-28. `*.zip` / `ext:`, `file:` / `folder:`, `in:D:\Mods`, `sort:size`, typed into the
+    query (the launcher gets them as is) or as request fields.
+  - **Index settings UI** · `idea` · M. The service's settings (drives on/off, excluded folders, demoted names,
+    `search_hidden`, `create_journals`) are only reachable through the pipe and the CLI (`--enable D:`, `--exclude …`).
+    A page in the Zebar settings popup or a launcher command; `status` already lists every drive with what a UI needs.
+  - **Launcher: exclude from a result** · `idea` · S. Ctrl+K on a folder result › "Exclude from the index" (`exclude` request).
+  - **Recent files in the launcher** · `idea` · S. The service's `recent` request (newest files, noisy places skipped) for the
+    home screen; replaces the "Recent files" idea above.
 - **Paths and environment variables** · `idea` · M. Typing `%appdata%`, `C:\…` or `~` behaves like Win+R: expands the
   path, suggests child folders as you type, and opens the folder or file.
 - **Explorer windows and tabs** · `idea` · M. Search already-open Explorer paths using the Shell windows collection. Investigate
@@ -246,9 +253,10 @@ Items:
   meters show their full height next to a nearly full drive.
 - **Disk activity history** · `done` 2026-11-27. Show all visible drives in the Storage popup with a shared
   scale and history window, a full-width tile for one drive, and scrolling when the grid overflows.
-- **Space map, TreeSize-style** · `ready` · M. 2026-11-28: the GlazeIndex service already keeps every folder's total
-  current (see [`indexer.md`](indexer.md)); what's left is a `children <path>` pipe request (items with sizes, largest
-  first) and the Zebar popup view. The collector or the popup would ask the pipe; no scan, no "Analyze" step. Earlier notes: a separate helper program (not the collector: scanning terabytes is heavy and runs on
+- **Space map, TreeSize-style** · `ready` · M. 2026-11-28: the backend is done in GlazeIndex ([`indexer.md`](indexer.md),
+  Requests): `children` (a folder's items with size and file count, biggest first), `largest`, `types`, `stat`, all in
+  about 15 ms. What's left is the Zebar view: the collector asks the pipe and passes it to the storage popup; no scan, no
+  "Analyze" step. Earlier notes: a separate helper program (not the collector: scanning terabytes is heavy and runs on
   demand) that scans a drive, caches the result and shows where the space goes at a glance. Scan options to weigh: reading the NTFS
   master file table directly (very fast, needs admin) or ordinary directory listing (no admin, slower).
   Discussed with Codex (2026-11-27), not yet agreed in full:
