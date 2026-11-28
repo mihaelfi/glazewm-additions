@@ -4,6 +4,13 @@ import { requestMetrics } from './metrics-feed';
 
 export type DriveActivityMode = 'none' | 'marks' | 'rates';
 
+export const DEFAULT_BAR_ORDER = ['storage', 'ram', 'cpu', 'gpu', 'tilingDirection', 'weather', 'language', 'network'] as const;
+export type BarLayoutItem = typeof DEFAULT_BAR_ORDER[number];
+export const PANEL_BAR_ITEMS = ['storage', 'ram', 'cpu', 'gpu', 'network'] as const;
+export type BarItem = typeof PANEL_BAR_ITEMS[number] | 'weather' | 'language';
+export const LANGUAGE_DISPLAY_MODES = ['code', 'codeAndFlag', 'flag'] as const;
+export type LanguageDisplay = typeof LANGUAGE_DISPLAY_MODES[number];
+
 /**
  * Widget settings. The collector keeps them in `settings.json` in the widget
  * pack folder (see `native/settings.rs`), so every bar and popup shares one copy.
@@ -12,7 +19,9 @@ export interface Settings {
   /** How far back graphs, heatmaps and process averages look. */
   historyMinutes: number;
   barHeight: number;
-  bar: { storage: boolean; ram: boolean; cpu: boolean; gpu: boolean; network: boolean };
+  bar: Record<BarItem, boolean>;
+  barOrder: readonly BarLayoutItem[];
+  languageDisplay: LanguageDisplay;
   /** Drive letters to show. `null` shows every drive, including ones added later. */
   drives: string[] | null;
   /** Activity shown on the bar. Missing letters show capacity only. */
@@ -23,8 +32,6 @@ export interface Settings {
   repeatTimerChime: boolean;
 }
 
-export type BarItem = keyof Settings['bar'];
-
 export const HISTORY_CHOICES = [1, 5, 10, 15];
 export const MIN_BAR_HEIGHT = 34;
 export const MAX_BAR_HEIGHT = 52;
@@ -33,7 +40,9 @@ export const DEFAULT_BAR_HEIGHT = 38;
 export const DEFAULT_SETTINGS: Settings = {
   historyMinutes: 1,
   barHeight: DEFAULT_BAR_HEIGHT,
-  bar: { storage: true, ram: true, cpu: true, gpu: true, network: true },
+  bar: { storage: true, ram: true, cpu: true, gpu: true, network: true, weather: true, language: true },
+  barOrder: DEFAULT_BAR_ORDER,
+  languageDisplay: 'codeAndFlag',
   drives: null,
   driveActivity: {},
   gpuAdapter: null,
@@ -55,6 +64,13 @@ export const showsDrive = (settings: Settings, letter: string) =>
 
 export const driveActivityMode = (settings: Settings, letter: string): DriveActivityMode =>
   settings.driveActivity[letter] ?? 'none';
+
+function normalizeBarOrder(order: readonly BarLayoutItem[] | undefined) {
+  const known = Array.isArray(order)
+    ? order.filter(item => DEFAULT_BAR_ORDER.includes(item))
+    : [];
+  return [...new Set([...known, ...DEFAULT_BAR_ORDER])];
+}
 
 /** Index of the GPU the bar follows in the collector's adapter list. */
 export function gpuIndex(settings: Settings, adapters: { name: string }[]) {
@@ -80,6 +96,9 @@ export function useSettings() {
       ...snapshot.settings,
       barHeight: Math.max(MIN_BAR_HEIGHT, Math.min(MAX_BAR_HEIGHT, snapshot.settings.barHeight ?? DEFAULT_BAR_HEIGHT)),
       bar: { ...DEFAULT_SETTINGS.bar, ...snapshot.settings.bar },
+      barOrder: normalizeBarOrder(snapshot.settings.barOrder),
+      languageDisplay: LANGUAGE_DISPLAY_MODES.includes(snapshot.settings.languageDisplay)
+        ? snapshot.settings.languageDisplay : DEFAULT_SETTINGS.languageDisplay,
       clockFormat: validClockFormat(format) ? format : DEFAULT_CLOCK_FORMAT,
     });
   }

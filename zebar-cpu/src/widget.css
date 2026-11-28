@@ -151,8 +151,22 @@ h1, h2, p { margin: 0; }
 }
 .segmented button:hover { background: #273358; color: #fff; }
 .segmented button[aria-checked="true"] { border-color: #9d8ef4; background: #302c57; color: #fff; }
-.check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(85px, 1fr)); gap: 5px; }
 .check-list { display: flex; flex-direction: column; gap: 3px; }
+.settings-bar-order { list-style: none; margin: 0; padding: 0; }
+.settings-bar-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.settings-bar-row .check-row { flex: 1; }
+.settings-bar-row .settings-bar-control-label { padding-inline-start: 27px; cursor: default; background: none; }
+.settings-bar-actions { display: flex; gap: 4px; }
+.settings-bar-actions button {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #1b243e;
+}
+.settings-bar-actions button:enabled:hover { background: #273358; }
+.settings-bar-actions button:disabled { opacity: .4; cursor: default; }
 .check-row {
   display: flex;
   align-items: center;
@@ -171,7 +185,7 @@ h1, h2, p { margin: 0; }
 .settings-drive { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; }
 .settings-drive-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .settings-drive small { white-space: nowrap; }
-.settings-drive select {
+:is(.settings-drive, .settings-bar-row) select {
   min-height: 28px;
   padding: 2px 6px;
   border: 1px solid #414d77;
@@ -181,7 +195,7 @@ h1, h2, p { margin: 0; }
   font: inherit;
   font-size: 12px;
 }
-.settings-drive select:disabled { color: var(--muted); }
+:is(.settings-drive, .settings-bar-row) select:disabled { color: var(--muted); }
 
 .overview {
   display: grid;

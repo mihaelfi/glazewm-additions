@@ -217,6 +217,15 @@ Items:
 
 ## Zebar: theme and layout
 
+- **Configurable bar order and visibility** · `done` 2026-11-28. Settings adds arrows for the
+  middle cards and indicators, plus visibility toggles for weather and input language. Hidden
+  items keep their positions. Network can move among the other cards, with the clock at the far right.
+- **Weather and Input language styling** · `done` 2026-11-28. Use the shared bar frame with a
+  thermometer beside the temperature and a small keyboard region flag under the language code.
+- **Missing keyboard flag on Windows** · `done` 2026-11-28. Strip Zebar's trailing null from
+  the keyboard locale and infer a default region for bare language codes. Verified on the live bar.
+- **Input language display choices** · `done` 2026-11-28. Bar layout offers Code only,
+  Code and flag, and Flag only. The selected mode is shared by all bars.
 - **Bar theme and adjustable height** · `done` 2026-11-28. Chamfered frames, subtle widget tints,
   shared icon geometry, circular drive meters, grouped thermal cells, height-aware controls,
   and the time centered below its date.

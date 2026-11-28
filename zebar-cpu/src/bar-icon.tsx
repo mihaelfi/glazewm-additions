@@ -6,6 +6,7 @@ const paths = {
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-14v5l3 2',
   timer: 'M12 21a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm0-14V3m-2 0h4m4 5 2-2m-8 5v4',
   battery: 'M2 7h18v10H2zm18 3h2v4h-2M5 10h10v4H5z',
+  thermometer: 'M9 14.5V5a3 3 0 1 1 6 0v9.5a5 5 0 1 1-6 0ZM12 8v9m0 2v.01',
 };
 
 export function BarIcon(props: { name: keyof typeof paths }) {

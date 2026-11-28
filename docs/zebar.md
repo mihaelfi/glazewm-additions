@@ -48,18 +48,26 @@ path when you deploy (or check that the relative one works first).
 
 ## Bar layout (`src/bar.tsx`)
 
-Left: a brand mark (four dots), then the workspace buttons. Right, in order (fixed by the "widget reorder" change):
+Left: a brand mark (four dots), then the workspace buttons. Default order on the right:
 paused indicator and binding-mode buttons (shown only when active) → battery →
 **storage card** → **RAM** (sparkline + % ) → **CPU** (heatmap + %) → **GPU** (green sparkline + %) → tiling-direction toggle (↔/↕) →
 weather (°C) → input language → **network** (connection icon and live rates) → clock (default `yyyy-MM-dd HH:mm`).
 
-- **Input language** is shortened to the first part of the layout code, in upper case (e.g. `en-US` → `EN`).
+- **Settings → Bar layout** lists items in their left-to-right order. Move Storage, RAM, CPU, GPU,
+  tiling direction, Weather, Input language, or Network with the arrows. Visibility checkboxes keep
+  each hidden item's place in the order. The clock stays at the far right.
+- **Weather and Input language** use the bar's chamfered frame. Weather shows a thermometer and the
+  temperature in °C. The Input language row in **Settings → Bar layout** offers **Code only**,
+  **Code and flag** (the default), or **Flag only**. Flag only uses a slightly larger flag.
+  The flag lookup uses the keyboard layout's explicit region or the locale's default region for
+  a bare language code. The flags are bundled locally with their MIT license.
+  [Flag Icons](https://github.com/lipis/flag-icons/tree/v7.3.2)
 - Clicking a workspace runs `focus --workspace <name>`. Clicking the tiling toggle runs `toggle-tiling-direction`.
 - **GlazeWM command strings: never quote arguments** (see PROJECT_STATE). The bar used `JSON.stringify` here until 2026-11-27, which broke workspace clicks and the binding-mode button.
 - The bar theme lives in `src/bar.css` and `src/bar-icon.tsx`: chamfered frames, consistent outline
   icons, and subtle per-widget tints. RAM is teal, GPU green, CPU blue, Storage ice blue, and Network
   violet with distinct download and upload arrows. On narrow screens the middle cards scroll
-  horizontally, with workspace controls, Network and the clock kept accessible.
+  horizontally. Workspace controls have their own scroll area and the clock stays visible.
 - **Height:** Settings → Bar height sizes the native window to 34–52 logical pixels
   (38 by default). Each bar keeps its monitor's width and sizes its controls and canvases to fit.
   GlazeWM's top gap controls space reserved for tiling and is set to 54px in this install.
@@ -142,8 +150,9 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
 
 ## Network (`src/network.tsx`, `src/network-panel.tsx`)
 
-- Immediately to the left of the clock, the bar shows a Wi-Fi, Ethernet, or disconnected icon plus fixed-width download and upload rates
-  in bits per second. The default physical interface sets the icon when known, with Ethernet taking
+- The Network card defaults to the last position before the clock. It shows a Wi-Fi, Ethernet, or
+  disconnected icon plus fixed-width download and upload rates in bits per second. The default physical
+  interface sets the icon when known, with Ethernet taking
   precedence when the default route does not match an active physical adapter. The Wi-Fi SSID is in the tooltip.
 - The popup shows aggregate rates and one tile per active physical adapter. Each tile shows the local IP,
   the Wi-Fi SSID when available, current rates and a history graph. Download is sky blue and upload is
@@ -173,7 +182,9 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
   | `repeatTimerChime` | boolean | `true` | Repeat the expiry chime until dismissal. Off plays it once |
   | `historyMinutes` | 1, 5, 10, 15 | 1 | Window for every graph, heatmap, "N ago" label and the CPU process Avg/Peak |
   | `barHeight` | 34–52 logical pixels | 38 | Height of the Zebar bar on every monitor |
-  | `bar.storage/ram/cpu/gpu/network` | booleans | all `true` | Which cards the bar shows. At least one must stay, because the cards are the only way into the popups (enforced in the UI and the collector) |
+  | `bar.storage/ram/cpu/gpu/network/weather/language` | booleans | all `true` | Which cards and indicators the bar shows. At least one of the five activity cards stays enabled for access to its popup |
+  | `barOrder` | ordered item IDs | Storage, RAM, CPU, GPU, tiling direction, Weather, Input language, Network | Order of the configurable items on every bar |
+  | `languageDisplay` | `code`, `codeAndFlag`, `flag` | `codeAndFlag` | How the Input language card displays the active keyboard layout |
   | `drives` | letters or `null` | `null` = all | Drives in the storage card **and** popup. Selecting every drive saves `null`, so drives added later show up |
   | `driveActivity` | drive letter → `marks` or `rates` | empty | Bar activity display per drive. Missing letters are **None**. Hiding a drive keeps its activity preference |
   | `gpuAdapter` | adapter name or `null` | `null` = most video memory | GPU the bar's GPU card follows. The GPU popup also opens on that tab |
@@ -218,6 +229,8 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 ## Known issues and unverified
 
 - Changing bar height does not change GlazeWM's top gap. Adjust the gap separately for a different tiling margin.
+- On narrow screens, Network scrolls with the other configurable cards.
+- Input language falls back to its code in either flag mode when the locale has no matching bundled flag.
 - Zebar provides the SSID for the default Wi-Fi interface. Other active Wi-Fi adapters still show
   traffic history and any local addresses the provider supplies.
 - Browser checks confirmed six drive rings and one Live rates readout fit at 1280 × 34 px in the test layout.
@@ -229,6 +242,16 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 
 ## Backups
 
+- `.glzr\zebar\cpu-activity\dist.before-language-display-20261128-134437` and
+  `zebar-cpu-collector.exe.before-language-display-20261128-134437` hold the installed pack before
+  adding the Input language choices.
+- `.glzr\zebar\cpu-activity\dist.before-keyboard-flags-20261128-134048` holds the installed
+  web assets before the keyboard locale fix.
+- `.glzr\zebar\cpu-activity\dist.before-status-cards-20261128-133424` and
+  `zebar-cpu-collector.exe.before-status-cards-20261128-133424` hold the installed pack before the
+  Network ordering and framed indicators update.
+- `.glzr\zebar\cpu-activity\dist.before-bar-layout-20261128-132542` and
+  `zebar-cpu-collector.exe.before-bar-layout-20261128-132542` hold the installed pack before Bar layout.
 - `.glzr\zebar\cpu-activity\dist.before-storage-colors-20261128-131217`: installed assets before the Storage palette change.
 - `.glzr\zebar\cpu-activity\dist.before-drive-rings-20261128-130631`: installed assets before the circular capacity meters.
 - `.glzr\zebar\cpu-activity\dist.before-clock-center-20261128-130008`: installed assets before centering the clock.
@@ -257,6 +280,25 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 Newest first. Covers the whole pack, front end and collector.
 
 ### 2026-11-28
+- **Added Input language display choices** to the Bar layout settings in `src/settings-panel.tsx`,
+  `src/settings.ts` and `src/widget.css`. Updated the card in `src/bar.tsx` and `src/bar.css`,
+  with persistence in `native/settings.rs`. Verified all three selections across two browser
+  bars, the fallback for layouts without an available flag, and reopening at the saved mode.
+  Deployed the bar and collector.
+- **Fixed missing Windows keyboard flags** in `src/bar.tsx` and `src/keyboard-flag.ts`.
+  Stripped the null terminator from the Windows keyboard locale and added default-region lookup
+  for language-only codes. Browser checks covered explicit and inferred regions. Deployed and
+  verified the flag appeared beneath `HE` on the live Zebar bar.
+- **Made Network movable and framed Weather and Input language.** Updated `src/bar.tsx`,
+  `src/bar.css`, `src/bar-icon.tsx`, the layout settings, and the collector defaults. Added
+  `src/keyboard-flag.ts` and bundled region flags. Verified both indicators between Network and
+  the clock in two browser bars, Network popup access after moving, and live keyboard flag
+  updates with a language-only fallback. Deployed the bar and collector.
+- **Added live bar ordering and visibility** in `src/bar.tsx`, `src/settings.ts`,
+  `src/settings-panel.tsx`, and `src/widget.css`, with persistence in `native/settings.rs`.
+  Verified reordering, hiding and restoring indicators, and opening the reordered GPU card
+  in the browser with two bars. Deployed the bar and collector and verified the installed
+  collector reads the new settings with the existing layout preferences.
 - **Refined the Storage bar palette** in `src/bar.css` with brighter ice-blue arcs, a matching icon
   and frame, a navy gradient, and colored read/write labels at idle. Verified capacity warning colors
   and six simultaneous Live rates readouts in the browser, then deployed the rebuilt assets.

@@ -89,8 +89,14 @@ Uses the same sources as Task Manager, so it works for any vendor:
 - Every `/history` response carries `settingsVersion` so bars refetch after a change.
 - `driveActivity` maps drive letters to their bar mode. The default is empty. Saving removes invalid
   letters and capacity-only entries. A hidden drive keeps its saved mode.
-- Older settings files get `bar.network: true` by default.
+- Older settings files get `bar.network`, `bar.weather`, and `bar.language` enabled when missing.
 - `barHeight` defaults to 38 logical pixels and is clamped to 34–52.
+- `barOrder` stores the left-to-right order of Storage, RAM, CPU, GPU, tiling direction, Weather,
+  Input language, and Network. Normalization keeps the first occurrence of each valid ID and appends
+  missing IDs in default order. This puts Network at the end of layouts saved before it was movable.
+  Visibility stays independent of order.
+- `languageDisplay` accepts `code`, `codeAndFlag`, and `flag`. Older settings and unknown mode
+  names default to `codeAndFlag`. The `bar.language` visibility toggle is independent.
 
 ## Timer (`timer.rs`)
 
@@ -114,6 +120,14 @@ within a few hundred ms, so a single stop-then-copy can fail with "file in use".
 ## Change log
 
 ### 2026-11-28
+- **Persisted Input language display mode** in `native/settings.rs`. Verified all three modes
+  round-trip and older settings retain the default display. The installed collector returned
+  the new setting after restart.
+- **Included Network in persisted bar order** in `native/settings.rs`. Verified previous saved
+  orders are preserved with Network appended. The installed collector exposed the new order.
+- **Persisted bar layout and indicator visibility** in `native/settings.rs`. Tests cover
+  older settings, duplicate and unknown IDs, and preserving indicator visibility when the
+  five activity cards are restored. The installed collector read the new fields after restart.
 - **Persisted bar height** in the shared settings in `native/settings.rs`. The collector
   migrates older settings files and bounds the new field. The deployed collector saved and
   reapplied the height on both bars during the live test.

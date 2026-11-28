@@ -4,17 +4,26 @@ import { useCloseActivityPanel } from './activity-panel';
 import { ClockSettings } from './clock-settings';
 import { formatDriveSize, useDrives } from './drives';
 import { requestMetrics, type GpuAdapter } from './metrics-feed';
-import { type BarItem, driveActivityMode, type DriveActivityMode, HISTORY_CHOICES, MAX_BAR_HEIGHT, MIN_BAR_HEIGHT, type Settings, useSettings } from './settings';
+import { type BarItem, type BarLayoutItem, driveActivityMode, type DriveActivityMode, HISTORY_CHOICES, LANGUAGE_DISPLAY_MODES, type LanguageDisplay, MAX_BAR_HEIGHT, MIN_BAR_HEIGHT, PANEL_BAR_ITEMS, type Settings, useSettings } from './settings';
 import './widget.css';
 import './clock.css';
 
-const barItems: { key: BarItem; label: string }[] = [
-  { key: 'storage', label: 'Storage' },
-  { key: 'ram', label: 'RAM' },
-  { key: 'cpu', label: 'CPU' },
-  { key: 'gpu', label: 'GPU' },
-  { key: 'network', label: 'Network' },
-];
+const barLabels: Record<BarLayoutItem, string> = {
+  storage: 'Storage',
+  ram: 'RAM',
+  cpu: 'CPU',
+  gpu: 'GPU',
+  tilingDirection: 'Tiling direction',
+  weather: 'Weather',
+  language: 'Input language',
+  network: 'Network',
+};
+
+const languageDisplayLabels: Record<LanguageDisplay, string> = {
+  code: 'Code only',
+  codeAndFlag: 'Code and flag',
+  flag: 'Flag only',
+};
 
 function SettingsPanel() {
   const close = useCloseActivityPanel();
@@ -45,7 +54,7 @@ function SettingsPanel() {
     }
   }
 
-  const barCount = () => barItems.filter(item => settings().bar[item.key]).length;
+  const panelCount = () => PANEL_BAR_ITEMS.filter(item => settings().bar[item]).length;
   const driveShown = (letter: string) => settings().drives?.includes(letter) ?? true;
   const shownDriveCount = () => drives().filter(drive => driveShown(drive.letter)).length;
 
@@ -60,6 +69,35 @@ function SettingsPanel() {
     if (mode === 'none') delete driveActivity[letter];
     else driveActivity[letter] = mode;
     void update({ driveActivity });
+  }
+
+  function visibilityToggle(item: BarItem) {
+    const checked = () => settings().bar[item];
+    const locked = () => PANEL_BAR_ITEMS.some(panel => panel === item) && checked() && panelCount() === 1;
+    return (
+      <label class="check-row" title={locked() ? 'Keep at least one activity panel on the bar' : undefined}>
+        <input
+          type="checkbox"
+          checked={checked()}
+          disabled={locked()}
+          onChange={event => void update({ bar: { ...settings().bar, [item]: event.currentTarget.checked } })}
+        />
+        {barLabels[item]}
+      </label>
+    );
+  }
+
+  async function moveBarItem(item: BarLayoutItem, offset: -1 | 1, button: HTMLButtonElement) {
+    const barOrder = [...settings().barOrder];
+    const from = barOrder.indexOf(item);
+    const to = from + offset;
+    if (from < 0 || to < 0 || to >= barOrder.length) return;
+    [barOrder[from], barOrder[to]] = [barOrder[to], barOrder[from]];
+    await update({ barOrder });
+    if (document.activeElement === document.body) {
+      const target = button.disabled ? button.parentElement?.querySelector<HTMLButtonElement>('button:enabled') : button;
+      target?.focus();
+    }
   }
 
   return (
@@ -105,27 +143,39 @@ function SettingsPanel() {
           <p>GlazeWM’s top gap controls the space above tiled windows.</p>
         </section>
         <section class="settings-section" aria-labelledby="bar-setting">
-          <h2 id="bar-setting">Show on the bar</h2>
-          <div class="check-grid">
-            <For each={barItems}>
-              {item => {
-                const checked = () => settings().bar[item.key];
-                // The bar items open the popups, so one has to stay.
-                const locked = () => checked() && barCount() === 1;
-                return (
-                  <label class="check-row" title={locked() ? 'Keep at least one item on the bar' : undefined}>
-                    <input
-                      type="checkbox"
-                      checked={checked()}
-                      disabled={locked()}
-                      onChange={event => update({ bar: { ...settings().bar, [item.key]: event.currentTarget.checked } })}
-                    />
-                    {item.label}
-                  </label>
-                );
-              }}
+          <h2 id="bar-setting">Bar layout</h2>
+          <p>Top to bottom here is left to right on the bar.</p>
+          <ol class="check-list settings-bar-order" aria-labelledby="bar-setting">
+            <For each={settings().barOrder}>
+              {(item, index) => (
+                <li class="settings-bar-row">
+                  {item === 'tilingDirection'
+                    ? <span class="check-row settings-bar-control-label">{barLabels[item]}</span>
+                    : visibilityToggle(item)}
+                  <Show when={item === 'language'}>
+                    <select
+                      aria-label="Input language display"
+                      value={settings().languageDisplay}
+                      disabled={!settings().bar.language}
+                      onChange={event => void update({ languageDisplay: event.currentTarget.value as LanguageDisplay })}
+                    >
+                      <For each={LANGUAGE_DISPLAY_MODES}>
+                        {mode => <option value={mode}>{languageDisplayLabels[mode]}</option>}
+                      </For>
+                    </select>
+                  </Show>
+                  <div class="settings-bar-actions">
+                    <button type="button" disabled={index() === 0}
+                      aria-label={`Move ${barLabels[item]} up`}
+                      onClick={event => void moveBarItem(item, -1, event.currentTarget)}>↑</button>
+                    <button type="button" disabled={index() === settings().barOrder.length - 1}
+                      aria-label={`Move ${barLabels[item]} down`}
+                      onClick={event => void moveBarItem(item, 1, event.currentTarget)}>↓</button>
+                  </div>
+                </li>
+              )}
             </For>
-          </div>
+          </ol>
         </section>
 
         <section class="settings-section" aria-labelledby="drives-setting">

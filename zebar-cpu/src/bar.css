@@ -15,14 +15,13 @@
   user-select: none;
 }
 
-:is(.workspaces, .bar-status, .bar-metrics, .bar-tail) {
+:is(.workspaces, .bar-status, .bar-metrics) {
   display: flex;
   align-items: center;
   min-width: 0;
   gap: 5px;
 }
 .bar-status { justify-content: flex-end; }
-.bar-tail { flex: none; }
 :is(.workspaces, .bar-metrics) { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .bar-metrics > * { flex-shrink: 0; }
 .brand {
@@ -36,9 +35,8 @@
 .brand i:nth-child(2), .brand i:nth-child(3) { background: #456580; }
 .bar-stat { white-space: nowrap; }
 .battery { display: flex; align-items: center; gap: 4px; margin-inline: 2px; }
-.input-language { color: #aebed0; font-weight: 600; margin-inline: 2px; }
 
-.bar :is(.metric-button, .clock-button, .workspace, .bar-control) {
+.bar :is(.metric-button, .clock-button, .workspace, .bar-control, .bar-status-card) {
   --bar-cut: 6px;
   --bar-accent: #9badc5;
   --bar-edge: color-mix(in srgb, var(--bar-accent) 35%, #1e2a3b);
@@ -55,8 +53,8 @@
   background: transparent;
   white-space: nowrap;
 }
-.bar :is(.metric-button, .clock-button, .workspace, .bar-control)::before,
-.bar :is(.metric-button, .clock-button, .workspace, .bar-control)::after {
+.bar :is(.metric-button, .clock-button, .workspace, .bar-control, .bar-status-card)::before,
+.bar :is(.metric-button, .clock-button, .workspace, .bar-control, .bar-status-card)::after {
   position: absolute;
   z-index: -1;
   pointer-events: none;
@@ -67,8 +65,8 @@
   );
   content: "";
 }
-.bar :is(.metric-button, .clock-button, .workspace, .bar-control)::before { inset: 0; background: var(--bar-edge); }
-.bar :is(.metric-button, .clock-button, .workspace, .bar-control)::after { inset: 1px; background: var(--bar-face); }
+.bar :is(.metric-button, .clock-button, .workspace, .bar-control, .bar-status-card)::before { inset: 0; background: var(--bar-edge); }
+.bar :is(.metric-button, .clock-button, .workspace, .bar-control, .bar-status-card)::after { inset: 1px; background: var(--bar-face); }
 .bar :is(.metric-button, .clock-button, .workspace, .bar-control):hover {
   --bar-edge: color-mix(in srgb, var(--bar-accent) 72%, #26374b);
   --bar-face: color-mix(in srgb, var(--bar-accent) 13%, #101a29);
@@ -99,6 +97,19 @@
 .bar .cpu-button { --bar-accent: #71b8f0; }
 .bar .gpu-button { --bar-accent: #9bd76f; }
 .bar .network-button { --bar-accent: #ac9de7; gap: 5px; }
+.bar .weather { --bar-accent: #e0b97b; gap: 3px; }
+.bar .input-language {
+  --bar-accent: #a3b5d2;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-width: 34px;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+}
+.keyboard-flag { display: block; width: 12px; height: 9px; border-radius: 1px; }
+.flag-only .keyboard-flag { width: 16px; height: 12px; }
 .bar .clock-button { --bar-accent: #a3b9d9; gap: 7px; min-width: 0; max-width: min(245px, 40vw); }
 .bar-icon { display: block; width: 16px; height: 16px; flex-shrink: 0; color: var(--bar-accent, #abbed3); }
 .metric-button > .bar-icon, .network-button > .network-icon {
