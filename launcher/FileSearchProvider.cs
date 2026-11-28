@@ -86,7 +86,9 @@ internal sealed class FileSearchProvider(IndexClient client, ShellIndex shell) :
         return new ProviderResult(Item(hit.Path, hit.Name, hit.Folder, hit.Size, hit.Highlight), match);
     }
 
-    private ResultItem Item(string path, string name, bool folder, long? size, (int Start, int Length)? highlight)
+    /// <summary>A file or folder result (also used by folder browsing, which passes its own subtitle and title matches).</summary>
+    internal static ResultItem Item(string path, string name, bool folder, long? size, (int Start, int Length)? highlight,
+        string? subtitle = null, int[]? matches = null)
     {
         var parent = Path.GetDirectoryName(path) ?? path;
         var sizeText = size is { } bytes ? Format.Size(bytes) + " · " : "";
@@ -94,12 +96,13 @@ internal sealed class FileSearchProvider(IndexClient client, ShellIndex shell) :
         {
             Id = KeyPrefix + path,
             Title = name.Length > 0 ? name : path,
-            Subtitle = $"{(folder ? "Folder" : "File")} · {sizeText}{parent}",
+            Subtitle = subtitle ?? $"{(folder ? "Folder" : "File")} · {sizeText}{parent}",
             Glyph = folder ? "" : "",
             IconPath = path,
             UsageKey = KeyPrefix + path,
-            FixedTitleMatches = highlight is { Length: > 0 } h && h.Start + h.Length <= name.Length
-                ? Enumerable.Range(h.Start, h.Length).ToArray() : null,
+            BrowsePath = folder ? path : null,
+            FixedTitleMatches = matches ?? (highlight is { Length: > 0 } h && h.Start + h.Length <= name.Length
+                ? Enumerable.Range(h.Start, h.Length).ToArray() : null),
             Actions = folder ? _ => ActionKits.Folder(path) : _ => ActionKits.File(path),
         };
     }

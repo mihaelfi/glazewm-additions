@@ -29,6 +29,8 @@ internal sealed class ResultItem : INotifyPropertyChanged
     /// <summary>Title positions the provider already knows (GlazeIndex matches words anywhere in a path, which the
     /// local matcher can't reproduce); used instead of matching the query again.</summary>
     public int[]? FixedTitleMatches { get; init; }
+    /// <summary>A folder → can open inside the launcher (folder browsing).</summary>
+    public string? BrowsePath { get; init; }
 
     private int[]? _titleMatches;
     private int[]? _subtitleMatches;

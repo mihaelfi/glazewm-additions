@@ -36,6 +36,17 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
   few ms after the keystroke without blocking typing; the previous query's still-matching results stay meanwhile. Known
   folders (Downloads, …) are left to the folder provider. Recently opened files and folders show on the home screen.
   Without the service the launcher works as before (one log line, then it retries every 15 s).
+- **Folder browsing:** → (caret at the end of the query) on any folder result (indexed folders, recents, Downloads and the
+  other known folders) opens the folder inside the launcher; Ctrl+K still lists its actions. The search box shows the path
+  as a chip (`…\Mods\Detailed Tooltips-248`), the chip at the right shows the sort, and the rows show size, file count and
+  modified date. Typing filters: the folder's own items first (best match first), then matches anywhere below it with
+  their path inside the folder (`in override`). Ctrl+S cycles the sort: name A–Z (folders first, the default), size
+  (largest first), date (newest first); Ctrl+Shift+S reverses it (name Z–A still keeps folders first, smallest first,
+  oldest first). The chip at the right names the order. The service sorts one way only, so a reversed listing is the end of
+  its order turned around (a second request with an offset when a folder has more than 2,000 items). → on a subfolder goes in; ← or Backspace with an empty filter goes up, selecting the folder
+  you came from, up to the drive root; Esc returns to the search and result you started from. Enter and every action work
+  as on search results. Hidden and system items are left out; a folder lists at most 2,000 items (a last row says how many
+  more, type to filter) and the deeper matches are capped at 40. Needs the GlazeIndex service; without it the list says so.
 - **Send to a workspace:** add `@N` to the query, or press **Ctrl+1…9** on a result. One digit means slot N in the group of
   the monitor you were on when you opened the launcher (`@3` → `13` on the primary monitor, `23` on the next one), the same
   rule as Alt+N; two digits (`@23`) are taken literally. The launcher also opens on that monitor. By default your view follows the window; hold **Shift** to stay where you are
@@ -51,7 +62,7 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
 ## Result actions
 
 Every result has a list of actions. **Enter** runs the first (the default). **Ctrl+K**, or **→** with the caret at the end
-of the query, opens the list for the selected result in place of the results; the search box shows the result as a chip
+of the query (except on folders, which → opens for browsing), opens the list for the selected result in place of the results; the search box shows the result as a chip
 (`[icon] Claude › Move to workspace`) and filters the list as you type. Enter runs the selected action, → or Enter opens a
 submenu (`›`), ← (empty filter) or Esc goes back a level, and Esc on the results closes the launcher. The footer under
 the results is built from the selected result's actions: the default, Ctrl+K, and every action with a shortcut (for a
@@ -204,6 +215,7 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
 | `HighlightedTextBlock.cs` | Renders matching characters as WPF runs and keeps Unicode text elements intact |
 | `WindowRescue.cs` | Uncloaks windows a dead GlazeWM left hidden (see below) |
 | `IndexClient.cs` | Client for GlazeIndex on `\\.\pipe\GlazeIndex` (`search<TAB>limit<TAB>text`, JSON reply); 150 ms connect timeout, 15 s back-off when the service is down |
+| `FolderBrowser.cs` | Folder browsing: the current folder and sort, the listing (`children`) and deeper matches (`search` with `in`) from GlazeIndex, fetched in the background with the newest request winning; builds the rows. `MainWindow` owns the keys and the chrome (`OpenFolder`, `BrowseUp`, `CloseBrowse`, `RenderBrowse`) |
 | `FileSearchProvider.cs` | Files and folders from GlazeIndex: background query (only the newest in flight), cached reply, `Changed` → `MainWindow.RefreshResults`; recents for the home screen; `ResultItem.FixedTitleMatches` carries the service's highlight |
 | `Native.cs`, `Infrastructure.cs` | Win32 interop; the shared background STA worker |
 
@@ -343,12 +355,27 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-list-wrap-20261128-112255\`: before ↑ ↓ wrap-around
 - `.glzr\launcher\before-file-shells-20261128-120346\`: before shells in a file's folder
 - `.glzr\launcher\before-action-list-20261128-155246\`: before the shell submenu, numbered rows and bold matches
+- `.glzr\launcher\before-folder-browse-20261128-160057\`: before folder browsing
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-28
+- **Reverse the browse sort with Ctrl+Shift+S** (user request). `FolderBrowser.cs`: `Reversed` (reset by Ctrl+S), the
+  listing cache key includes it, reversed listings take the end of the service's order (`IndexClient.ChildrenAsync` gained
+  `offset`), name Z–A keeps folders first; the chip reads `name A–Z` / `name Z–A` / `largest first` / `smallest first` /
+  `newest first` / `oldest first`. Checked with pipe snapshots at `D:\`: smallest first starts with GoG (0 B), name Z–A with
+  wine_prefixes and the folders above the file. The user confirmed folder browsing works with the real keyboard.
+- **Folder browsing** (user request; design in `backlog.md`, "Navigation, scopes and settings"). New `FolderBrowser.cs`;
+  `IndexClient.cs` gained `ChildrenAsync` and `SearchInAsync` (JSON requests) and reads `files`, `hidden`, `excluded`;
+  `ResultItem.BrowsePath` marks folders (`FileSearchProvider.Item`, known folders in `SearchProviders.cs`); `MainWindow`:
+  → opens a folder, ← / Backspace go up, Ctrl+S sorts, Esc restores the search; the result footer shows `→ browse` on
+  folders; `App.xaml.cs` shares one `IndexClient`. Installed through the supervisor. Checked with pipe snapshots:
+  `dragon age mods` › → on `mods` lists `dazip` and `override` with sizes, counts and dates; Ctrl+S sorts by size;
+  `tooltip` finds `Detailed ToolTips.override` `in override`, highlighted; ← selects `mods` in its parent; Ctrl+K and Esc
+  come back to the listing; Esc again restores the search; `D:\` by size starts with SteamLibrary (904.6 GB); ← at the root
+  stays there; `windows` at `D:\` lists deep matches with their paths. Not checked with the real keyboard.
 - **Shell submenu, numbered action rows, bold matches** (user requests, the small items of the "Navigation, scopes and
   settings" proposal in `backlog.md`). `ResultActions.cs`: `ShellMenu` replaces the six shell rows with one "Open shell
   here ›" / "Open shell in its folder ›" row (Ctrl+↵ / Ctrl+Shift+↵ on folders still work, found in the submenu).

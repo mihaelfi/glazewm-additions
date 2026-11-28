@@ -169,6 +169,7 @@ internal sealed class FolderSearchProvider(ShellIndex index, AliasBook aliases) 
                 IconFolderId = folder.Id,
                 UsageKey = id,
                 MatchedAlias = alias,
+                BrowsePath = Path.IsPathFullyQualified(folder.Path) ? folder.Path : null,
                 Actions = ActionKits.WithAliases(aliases, id, folder.Name, ActionKits.Single("Open in File Explorer", "\uE838", () =>
                 {
                     Actions.OpenShellItem(folder.Path);

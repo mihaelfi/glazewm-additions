@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly SearchEngine _search;
     private readonly Actions _actions;
     private readonly IconCache _icons;
+    private readonly FolderBrowser _browser;
 
     private WmSnapshot _wm = WmSnapshot.Empty;
     private IntPtr _hwnd;
@@ -26,14 +27,17 @@ public partial class MainWindow : Window
     private bool _hiding;
     private long _openVersion;
 
-    internal MainWindow(GlazeClient glaze, ShellIndex shellIndex, SearchEngine search, Actions actions, IconCache icons)
+    internal MainWindow(GlazeClient glaze, ShellIndex shellIndex, SearchEngine search, Actions actions, IconCache icons,
+        FolderBrowser browser)
     {
         _glaze = glaze;
         _shellIndex = shellIndex;
         _search = search;
         _actions = actions;
         _icons = icons;
+        _browser = browser;
         InitializeComponent();
+        _browser.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible && Browsing) Refresh(keepSelection: true); });
 
         Deactivated += (_, _) => HideLauncher(restoreFocus: false);
         PreviewKeyDown += OnPreviewKeyDown;
@@ -135,6 +139,7 @@ public partial class MainWindow : Window
         {
             Hide();
             CloseActions();
+            CloseBrowse(restore: false);
             OpenOffset.BeginAnimation(TranslateTransform.YProperty, null);
             LauncherContent.BeginAnimation(OpacityProperty, null);
             if (restoreFocus && _previousForeground != IntPtr.Zero && Native.IsWindow(_previousForeground))
@@ -221,6 +226,7 @@ public partial class MainWindow : Window
     {
         // The search box holds the action filter while the action list is open; the results wait.
         if (InActionMode) return;
+        if (Browsing) { RenderBrowse(keepSelection); return; }
 
         var query = CurrentQuery;
         var previousId = keepSelection && Results.SelectedIndex > 0 ? (Results.SelectedItem as ResultItem)?.Id : null;
@@ -274,6 +280,7 @@ public partial class MainWindow : Window
     private void UpdateFooter()
     {
         if (InActionMode) { UpdateActionFooter(); return; }
+        if (Browsing) { UpdateBrowseFooter(); return; }
 
         var actions = SelectedActions(out var item);
         if (item is null || actions.Count == 0)
@@ -302,6 +309,124 @@ public partial class MainWindow : Window
             }
         }
         if (actions[0].Shifted is not null) parts.Add("+Shift: stay");
+        if (item.BrowsePath is not null) parts.Insert(1, "→ browse");
+        Footer.Text = string.Join("   ", parts);
+    }
+
+    // ---- folder browsing --------------------------------------------------------
+
+    private bool Browsing => _browser.Path is not null;
+    private string _browseSavedQuery = "";
+    private string? _browseSavedId;
+    /// <summary>The row to select after the next render (the folder we just came up from).</summary>
+    private string? _browseSelectId;
+
+    /// <summary>→ on a folder: list its items in place of the results; the search box filters them.</summary>
+    private void OpenFolder(string path)
+    {
+        if (!Browsing)
+        {
+            _browseSavedQuery = QueryBox.Text;
+            _browseSavedId = (Results.SelectedItem as ResultItem)?.Id;
+        }
+        _browser.Open(path);
+        _browseSelectId = null;
+        SetQueryText("");
+        ShowBrowseChrome();
+        Refresh(keepSelection: false);
+    }
+
+    /// <summary>← or Backspace with an empty filter: the parent folder, selecting the one we came from.</summary>
+    private void BrowseUp()
+    {
+        if (_browser.Path is not { } path) return;
+        var trimmed = path.TrimEnd('\\');
+        // "D:" is the root: GetDirectoryName("D:\") is null, so there's nothing above it.
+        if (Path.GetDirectoryName(trimmed.Length == 2 ? trimmed + "\\" : trimmed) is not { Length: > 0 } parent) return;
+        _browser.Open(parent);
+        _browseSelectId = FileSearchProvider.KeyPrefix + trimmed;
+        SetQueryText("");
+        ShowBrowseChrome();
+        Refresh(keepSelection: false);
+    }
+
+    /// <summary>Leaves browsing; with <paramref name="restore"/>, back to the search and result it started from.</summary>
+    private void CloseBrowse(bool restore)
+    {
+        if (!Browsing) return;
+        _browser.Close();
+        Crumb.Visibility = Visibility.Collapsed;
+        SearchGlyph.Visibility = Visibility.Visible;
+        Placeholder.Text = PlaceholderText;
+        if (!restore) return;
+        SetQueryText(_browseSavedQuery);
+        Refresh(keepSelection: false);
+        if (_browseSavedId is { } id && Results.ItemsSource is List<ResultItem> items && items.FindIndex(i => i.Id == id) is >= 0 and var index)
+        {
+            Results.SelectedIndex = index;
+            Results.ScrollIntoView(Results.SelectedItem);
+            UpdateFooter();
+        }
+    }
+
+    private void ShowBrowseChrome()
+    {
+        if (_browser.Path is not { } path) return;
+        SearchGlyph.Visibility = Visibility.Collapsed;
+        Crumb.Visibility = Visibility.Visible;
+        CrumbIcon.Source = null;
+        CrumbGlyph.Text = "";
+        CrumbText.Text = ShortPath(path);
+        Placeholder.Text = "Filter this folder…";
+    }
+
+    /// <summary>Keeps the end of a long path, which says where you are: <c>…\Mods\Detailed Tooltips-248</c>.</summary>
+    private static string ShortPath(string path)
+    {
+        const int Max = 38; // what fits the crumb's 330 px
+        if (path.Length <= Max) return path;
+        var tail = path[^(Max - 1)..];
+        int cut = tail.IndexOf('\\');
+        return "…" + (cut >= 0 ? tail[cut..] : tail);
+    }
+
+    private void RenderBrowse(bool keepSelection)
+    {
+        var previousId = keepSelection ? (Results.SelectedItem as ResultItem)?.Id : null;
+        var items = _browser.Items(QueryBox.Text);
+        foreach (var item in items)
+        {
+            if (item.FixedTitleMatches is not null) item.Highlight("");
+            LoadIcon(item);
+        }
+
+        Results.ItemsSource = items;
+        Results.Visibility = items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        if (items.Count > 0)
+        {
+            var wanted = _browseSelectId ?? previousId;
+            int index = wanted is null ? 0 : Math.Max(0, items.FindIndex(i => i.Id == wanted));
+            if (_browseSelectId is not null && items.Any(i => i.Id == _browseSelectId)) _browseSelectId = null;
+            Results.SelectedIndex = index;
+            Results.ScrollIntoView(Results.SelectedItem);
+        }
+        TargetText.Text = _browser.SortLabel;
+        TargetText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
+        UpdateFooter();
+    }
+
+    private void UpdateBrowseFooter()
+    {
+        var parts = new List<string>();
+        var item = Results.SelectedItem as ResultItem;
+        var actions = SelectedActions(out _);
+        if (actions.Count > 0) parts.Add("↵ " + actions[0].Title);
+        if (item?.BrowsePath is not null) parts.Add("→ open here");
+        if (QueryBox.Text.Length == 0) parts.Add("← up");
+        parts.Add("Ctrl+S sort");
+        parts.Add("Ctrl+Shift+S reverse");
+        if (actions.Count > 1) parts.Add("Ctrl+K actions");
+        parts.Add("Esc back");
         Footer.Text = string.Join("   ", parts);
     }
 
@@ -406,6 +531,7 @@ public partial class MainWindow : Window
         Crumb.Visibility = Visibility.Collapsed;
         SearchGlyph.Visibility = Visibility.Visible;
         Placeholder.Text = PlaceholderText;
+        if (Browsing) ShowBrowseChrome();
     }
 
     private const string PlaceholderText = "Apps, windows, commands…   @3 → workspace 3";
@@ -626,7 +752,16 @@ public partial class MainWindow : Window
         {
             case Key.Escape:
                 if (InActionMode) Back();
+                else if (Browsing) CloseBrowse(restore: true);
                 else HideLauncher(restoreFocus: true);
+                return true;
+            case Key.S when ctrl && Browsing && !InActionMode:
+                if (shift) _browser.ReverseSort();
+                else _browser.NextSort();
+                Refresh(keepSelection: true);
+                return true;
+            case Key.Left or Key.Back when Browsing && !InActionMode && QueryBox.Text.Length == 0:
+                BrowseUp();
                 return true;
             case Key.Down: Move(1, wrap: true); return true;
             case Key.Up: Move(-1, wrap: true); return true;
@@ -640,7 +775,12 @@ public partial class MainWindow : Window
                 OpenActions();
                 return true;
             case Key.Right when !ctrl && QueryBox.SelectionLength == 0 && QueryBox.CaretIndex == QueryBox.Text.Length:
-                if (!InActionMode) OpenActions();
+                if (!InActionMode)
+                {
+                    // Folders open inside the launcher (Ctrl+K still lists their actions); everything else lists actions.
+                    if (Results.SelectedItem is ResultItem { BrowsePath: { } folder }) OpenFolder(folder);
+                    else OpenActions();
+                }
                 else if (ActionList.SelectedItem is ActionRow { Action.IsSubmenu: true } row) OpenSubmenu(row.Action);
                 else return false;
                 return true;

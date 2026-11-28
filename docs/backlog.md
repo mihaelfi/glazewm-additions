@@ -69,7 +69,9 @@ keyboard. VS Code's quick open lists every prefix when you type `?`.
   Commands, each with its prefix in dim text, so it is the always-visible legend. Ctrl+Tab / Ctrl+Shift+Tab switch scope;
   typing a prefix at the start switches too and becomes the chip (it leaves the text box). Prefix characters to agree:
   avoid `@` (workspaces), `\` `:` `%` `~` (paths, planned); for example `>` commands, `<` windows, `/` files and folders.
-- **Folder browsing** · `idea` · M (user request). → on a folder result opens the folder inside the launcher (Ctrl+K
+- **Folder browsing** · `done` 2026-11-28, confirmed by the user (user request; see `launcher.md`, Using it).
+  Built as proposed, with name as the default sort; Ctrl+Shift+S reverses the order (user request). Ideas left: remember the last sort, show hidden items on request,
+  browse a typed path (`D:\Ga` → see "Paths and environment variables"). The proposal was: → on a folder result opens the folder inside the launcher (Ctrl+K
   still opens its actions): a path chip, the folder's items with size, file count and date. Typing filters the direct
   items first, then matches anywhere below it (the service's `in:` search) with their relative path. Sort by name, size or
   modified (Ctrl+S cycles; the header shows the order). → on a subfolder goes in; ← or Backspace with an empty filter goes up,
