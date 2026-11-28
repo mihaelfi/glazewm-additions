@@ -141,7 +141,7 @@ internal sealed class FolderBrowser(IndexClient client)
         if (hit.ModifiedUnixMs > 0)
             parts.Add(DateTimeOffset.FromUnixTimeMilliseconds(hit.ModifiedUnixMs).LocalDateTime.ToString("yyyy-MM-dd HH:mm"));
         if (where is { Length: > 0 }) parts.Add(where);
-        return FileSearchProvider.Item(hit.Path, hit.Name, hit.Folder, null, null, string.Join(" · ", parts), matches);
+        return FileSearchProvider.Item(hit.Path, hit.Name, hit.Folder, null, null, string.Join(" · ", parts), matches, hit.Excluded);
     }
 
     /// <summary>A row that only informs (no actions).</summary>

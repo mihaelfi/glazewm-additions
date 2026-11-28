@@ -15,8 +15,11 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
   The content fades and slides into place over 125 ms. The selected row has a lavender accent that fades in over 85 ms. Both effects respect Windows' animation setting. Typing, navigation, closing and opening a result respond immediately.
 - **↑ ↓ and Tab / Shift+Tab wrap around** in the results and the action list: ↑ on the top row goes to the last, ↓ on
   the last goes to the top. Page Up / Page Down move 8 rows and stop at the ends.
-- An **empty query** lists recent items for the current workspace ("Recent"), then every open window (other workspaces
-  first, "Open windows") as a window switcher.
+- An **empty query** lists recent items for the current workspace ("Recent"), then up to four files and folders you
+  opened anywhere ("Recently opened": Windows' own Recent items, `%APPDATA%\Microsoft\Windows\Recent`, with when you opened
+  them), then every open window (other workspaces first, "Open windows") as a window switcher. The Files scope (`?`) with
+  an empty query lists all of the recent ones (up to 40). GlazeIndex's `recent` request isn't used for this: the files that
+  change most are app data (Steam manifests, torrent state, saves, build output), not what you opened.
 - **Sections:** with text in the All scope, the best match comes first under "Top hit", then a section per kind in a fixed
   order: Windows (5 rows), Apps (4), Browser tabs (3), Commands (3), Files and folders (5). A section with more ends in a
   "Show all N …" row ("Show more files and folders" for files, whose total the launcher doesn't know); Enter or → on it
@@ -98,7 +101,7 @@ submenu without a summary hint, such as Open shell ›, its rows' shortcuts).
 | Window | Focus window (↵) · Bring to this workspace (Ctrl+↵, when elsewhere) · Move to workspace › (Ctrl+1–9, +Shift stay) · Open file location · Close window (Ctrl+W) · End task |
 | With `@N` in the query | App: Open on workspace N (↵, Shift+↵ stay); window: Move to workspace N (↵, Shift+↵ stay) |
 | Folder, command | Their default action (Open in File Explorer / Run) |
-| Indexed folder | Open (↵) · Open shell here › (Terminal Ctrl+↵, Terminal as administrator Ctrl+Shift+↵, PowerShell 7, Command Prompt, each also as administrator) · Open file location · Copy path |
+| Indexed folder | Open (↵) · Open shell here › (Terminal Ctrl+↵, Terminal as administrator Ctrl+Shift+↵, PowerShell 7, Command Prompt, each also as administrator) · Open file location · Copy path · Exclude from the index (↵ twice; GlazeIndex `exclude`: search skips it, its size still counts) or, on a folder shown as excluded while browsing, Include in the index again |
 | Indexed file | Open (↵), or Open with *your Enter app* (↵) then Open with default app · Open file location (Ctrl+↵) · Open with › (see below) · Run as administrator (Ctrl+Shift+↵; `.exe`, `.bat`, `.cmd`, `.com`, `.msi`) · Open shell in its folder › (the same six rows) · Copy path |
 | App, folder, command | Also: Add alias… (text entry) · Aliases › (when it has any; Enter on one removes it) |
 | Go to workspace, browser tab | One default action each |
@@ -273,6 +276,7 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
 | `HighlightedTextBlock.cs` | Renders matching characters as WPF runs and keeps Unicode text elements intact |
 | `WindowRescue.cs` | Uncloaks windows a dead GlazeWM left hidden (see below) |
 | `IndexClient.cs` | Client for GlazeIndex on `\\.\pipe\GlazeIndex` (`search<TAB>limit<TAB>text`, JSON reply); 150 ms connect timeout, 15 s back-off when the service is down |
+| `WindowsRecent.cs` | Windows' Recent items: the newest `.lnk` files in the Recent folder resolved with `IShellLinkW` on a background thread, at most every 5 s; existing targets only; `Changed` refreshes the home screen. `FileSearchProvider.Recents` shows them under "Recently opened" (`ProviderResult.HomeSection`) |
 | `FolderBrowser.cs` | Folder browsing: the current folder and sort, the listing (`children`) and deeper matches (`search` with `in`) from GlazeIndex, fetched in the background with the newest request winning; builds the rows. `MainWindow` owns the keys and the chrome (`OpenFolder`, `BrowseUp`, `CloseBrowse`, `RenderBrowse`) |
 | `FileSearchProvider.cs` | Files and folders from GlazeIndex: background query (only the newest in flight), cached reply, `Changed` → `MainWindow.RefreshResults`; recents for the home screen; `ResultItem.FixedTitleMatches` carries the service's highlight |
 | `Native.cs`, `Infrastructure.cs` | Win32 interop; the shared background STA worker |
@@ -425,6 +429,7 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-action-list-20261128-155246\`: before the shell submenu, numbered rows and bold matches
 - `.glzr\launcher\before-folder-browse-20261128-160057\`: before folder browsing
 - `.glzr\launcher\before-scopes-20261128-162650\`: before sections, scope chips and prefixes
+- `.glzr\launcher\before-recent-exclude-20261128-163734\`: before recently opened files and Exclude from the index
 - `.glzr\launcher\before-open-with-settings-20261128-164636\`: before Open with and the settings window
 
 ## Change log
@@ -447,6 +452,16 @@ Newest first.
   "your app · ↵ default"; the settings window's three pages rendered (the File index page with C, D, E on, F and H off, G
   greyed as exFAT); Remove (pressed through UI Automation) deleted the test rule and kept the alias; Ctrl+, opened the
   window. Left: General (hotkey), Search and Workspaces pages.
+- **Recently opened files, Exclude from the index, quieter tab matches** (small backlog items). New `WindowsRecent.cs`;
+  `FileSearchProvider.Recents` adds its items; `ProviderResult` gained `HomeSection` / `HomeRank`, and `SearchEngine` shows
+  such results under their own header on the home screen. `ResultActions.cs`: `ActionKits.Folder` ends with Exclude from
+  the index (confirm) or Include in the index again (`excluded`, passed from browse rows); `IndexClient.Shared` and
+  `ExcludeAsync`. `BrowserTabSearchProvider.cs`: in the All scope, tabs need a substring match or better. Installed
+  through the supervisor. Checked with pipe snapshots: the home screen shows "Recently opened" (ComfyUI output folders and
+  images, opened 16:13); `chrome` no longer lists YouTube tabs by scattered letters; Ctrl+K › `exclude` on `mods` asked for
+  a second Enter, then GlazeIndex's settings listed the folder and browsing showed it as excluded; Include in the index
+  again emptied the list. GlazeIndex's `recent` request was tried first and dropped (app data, not opened files). The
+  settings-window session was told which files this touched.
 - **`^` selects the Tabs scope** (user request; Tabs had no prefix). `Search.cs` (`Scopes.List`) and the All footer.
   Checked with a pipe snapshot: `^youtube` opens Tabs with the three YouTube tabs.
 - **Sections, scope chips and prefixes** (user request; prefixes agreed with the user after checking PowerToys Run's

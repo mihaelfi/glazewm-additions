@@ -91,7 +91,7 @@ internal sealed class FileSearchProvider(IndexClient client, ShellIndex shell) :
 
     /// <summary>A file or folder result (also used by folder browsing, which passes its own subtitle and title matches).</summary>
     internal static ResultItem Item(string path, string name, bool folder, long? size, (int Start, int Length)? highlight,
-        string? subtitle = null, int[]? matches = null)
+        string? subtitle = null, int[]? matches = null, bool excluded = false)
     {
         var parent = Path.GetDirectoryName(path) ?? path;
         var sizeText = size is { } bytes ? Format.Size(bytes) + " · " : "";
@@ -106,7 +106,7 @@ internal sealed class FileSearchProvider(IndexClient client, ShellIndex shell) :
             BrowsePath = folder ? path : null,
             FixedTitleMatches = matches ?? (highlight is { Length: > 0 } h && h.Start + h.Length <= name.Length
                 ? Enumerable.Range(h.Start, h.Length).ToArray() : null),
-            Actions = folder ? _ => ActionKits.Folder(path) : _ => ActionKits.File(path),
+            Actions = folder ? _ => ActionKits.Folder(path, excluded) : _ => ActionKits.File(path),
         };
     }
 
@@ -122,7 +122,31 @@ internal sealed class FileSearchProvider(IndexClient client, ShellIndex shell) :
             if (!folder && !File.Exists(path)) continue;
             list.Add(new ProviderResult(Item(path, Path.GetFileName(path.TrimEnd('\\')), folder, null, null), default));
         }
+
+        // What the user opened anywhere (Windows' Recent items), under its own header; newest first.
+        if (!_hooked) { _hooked = true; _opened.Changed += () => Changed?.Invoke(); }
+        var items = _opened.Items;
+        for (int i = 0; i < items.Count; i++)
+        {
+            var (path, folder, opened) = items[i];
+            if (list.Any(r => r.Item.Id == KeyPrefix + path)) continue; // already a launcher recent
+            var parent = Path.GetDirectoryName(path) ?? path;
+            var subtitle = $"{(folder ? "Folder" : "File")} · opened {When(opened)} · {parent}";
+            list.Add(new ProviderResult(Item(path, Path.GetFileName(path.TrimEnd('\\')), folder, null, null, subtitle), default,
+                HomeSection: "Recently opened", HomeRank: 1000 - i));
+        }
         return list;
+    }
+
+    private readonly WindowsRecent _opened = new();
+    private bool _hooked;
+
+    private static string When(DateTime time)
+    {
+        var today = DateTime.Today;
+        if (time >= today) return time.ToString("HH:mm");
+        if (time >= today.AddDays(-1)) return "yesterday " + time.ToString("HH:mm");
+        return time.ToString(time.Year == today.Year ? "d MMM" : "d MMM yyyy");
     }
 }
 

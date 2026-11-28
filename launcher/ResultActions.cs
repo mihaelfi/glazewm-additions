@@ -265,13 +265,24 @@ internal static class ActionKits
     }
 
     /// <summary>Actions for a folder from the file index: open, a shell in it (Ctrl+Enter, elevated with Ctrl+Shift+Enter).</summary>
-    public static IReadOnlyList<ResultAction> Folder(string path) =>
+    public static IReadOnlyList<ResultAction> Folder(string path, bool excluded = false) =>
     [
         new("Open", "\uE838", () => { Actions.OpenPath(path); return Task.CompletedTask; }),
         ShellMenu(path, "Open shell here", mainShortcuts: true),
         ShowInFolder(path),
         CopyPath(path),
+        IndexExclusion(path, excluded),
     ];
+
+    /// <summary>Hides a folder from file search (its size still counts), or brings it back; GlazeIndex's <c>exclude</c>
+    /// request, which any signed-in user may send. Excluding asks for a second Enter.</summary>
+    private static ResultAction IndexExclusion(string path, bool excluded) => excluded
+        ? new("Include in the index again", "\uE8FB", () => IndexClient.Shared.ExcludeAsync(path, false),
+            Detail: "search finds its contents again", Flags: ActionFlags.NoUsage | ActionFlags.RestoreFocus)
+        : new("Exclude from the index", "\uE8D8", () => IndexClient.Shared.ExcludeAsync(path, true),
+            Detail: "search skips it; its size still counts",
+            ConfirmTitle: $"Press \u21B5 again to hide {Path.GetFileName(path.TrimEnd('\\'))} from file search",
+            Flags: ActionFlags.Confirm | ActionFlags.NoUsage | ActionFlags.RestoreFocus);
 
     /// <summary>Actions for a file from the file index: open (or the user's Enter app, see <see cref="OpenWith"/>), its
     /// folder in Explorer (Ctrl+Enter), Open with ›, run elevated (Ctrl+Shift+Enter, programs only), and a shell in its

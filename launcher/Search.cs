@@ -248,6 +248,7 @@ internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, Usa
         providers.OfType<IRefreshableSearchProvider>().Select(provider => provider.RefreshAsync(snapshot)));
 
     private const int MaxListed = 400;
+    private const int MaxHomeSection = 4;
 
     /// <summary>Sections of the mixed results, in order, with how many rows each shows before "Show all".</summary>
     private static readonly (ResultKind Kind, string Name, int Cap, SearchScope Scope)[] Sections =
@@ -286,7 +287,7 @@ internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, Usa
                 else if (home || result.Match.Found)
                 {
                     double score = home
-                        ? recents.GetValueOrDefault(result.Item.UsageKey)
+                        ? (result.HomeSection is null ? recents.GetValueOrDefault(result.Item.UsageKey) : result.HomeRank)
                         : result.Match.Score + provider.Priority + UsageBoost(result.Item.UsageKey, currentWs);
                     results.Add((result, score, provider.Kind));
                 }
@@ -295,9 +296,16 @@ internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, Usa
 
         if (home && scope == SearchScope.All)
         {
-            var recentItems = results.Where(entry => entry.Result.TargetWindow is null && entry.Score > 0)
+            var recentItems = results.Where(entry => entry.Result.TargetWindow is null && entry.Result.HomeSection is null && entry.Score > 0)
                 .OrderByDescending(entry => entry.Score)
                 .Take(MaxRecents).Select(entry => entry.Result.Item).ToList();
+            // Provider sections such as "Recently opened" (Windows' Recent items), without what Recent already shows.
+            var shownIds = recentItems.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+            var homeSections = results.Where(entry => entry.Result.HomeSection is not null && !shownIds.Contains(entry.Result.Item.Id))
+                .GroupBy(entry => entry.Result.HomeSection!)
+                .Select(group => (Name: group.Key, Items: group.OrderByDescending(entry => entry.Score)
+                    .Take(MaxHomeSection).Select(entry => entry.Result.Item).ToList()))
+                .ToList();
             var openItems = results.Where(entry => entry.Result.TargetWindow is not null)
                 .OrderByDescending(entry => OpenPriority(entry.Result.TargetWindow, currentWs))
                 .ThenBy(entry => entry.Result.TargetWindow?.WorkspaceName, StringComparer.Ordinal)
@@ -305,6 +313,7 @@ internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, Usa
                 .Take(MaxResults).Select(entry => entry.Result.Item).ToList();
             var rows = pinned;
             if (recentItems.Count > 0) rows.AddRange([ResultItem.Header("Recent"), .. recentItems]);
+            foreach (var (name, items) in homeSections) rows.AddRange([ResultItem.Header(name, "? for all"), .. items]);
             if (openItems.Count > 0) rows.AddRange([ResultItem.Header("Open windows"), .. openItems]);
             return rows;
         }

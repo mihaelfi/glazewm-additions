@@ -65,7 +65,7 @@ keyboard. VS Code's quick open lists every prefix when you type `?`.
 - **Sections in the mixed results** · `done` 2026-11-28, `verify` with the real keyboard (see `launcher.md`, Using it). The proposal was: No prefix = everything, as now, but grouped: a top hit, then a section per
   provider with a cap (about 5 windows, 4 apps, 3 tabs, 5 files and folders, 3 commands) and a "Show all 248 files ›" row
   that opens that scope. Enter on the top hit stays one keystroke.
-- **Tabs: drop loose matches** · `idea` · S. With sections, browser tabs that match only as a scattered subsequence show
+- **Tabs: drop loose matches** · `done` 2026-11-28 (All scope only; `^` and `<` still list them below better matches). With sections, browser tabs that match only as a scattered subsequence show
   up as noise (`chrome` lists "ACCIDENTALLY Expose Their Own Crimes" by single letters). Require substring or better for
   tabs, at least in the All scope.
 - **Scope chips with prefixes** · `done` 2026-11-28, `verify` with the real keyboard and mouse (user request; prefixes as
@@ -165,7 +165,7 @@ keyboard. VS Code's quick open lists every prefix when you type `?`.
   changes) and make them searchable: type "move window" or "alt+shift" and see the key and what it does. Open
   questions: a prefix (`?` or `keys`) or mixed into normal results; whether Enter runs the command.
 - **Shortcut folder** · `idea` · S. Index a folder the user picks (for example `C:\launcher shortcuts`) and show its items with their own badge.
-- **Recent files** · `idea` · M. Start from Windows' own recent items (`%APPDATA%\Microsoft\Windows\Recent`), which needs
+- **Recent files** · `done` 2026-11-28 as "Recently opened" on the home screen and in the Files scope. Start from Windows' own recent items (`%APPDATA%\Microsoft\Windows\Recent`), which needs
   no indexing service. Later perhaps per-app jump lists.
 - **File and folder index, Everything-style (shared helper)** · `done` 2026-11-28. The GlazeIndex service
   ([`indexer.md`](indexer.md)) reads the MFT, follows the USN journal (it created the missing ones on D and E), and serves
@@ -182,9 +182,9 @@ keyboard. VS Code's quick open lists every prefix when you type `?`.
     folders, demoted names, hidden files; `create_journals` isn't shown). The service's settings (drives on/off, excluded folders, demoted names,
     `search_hidden`, `create_journals`) are only reachable through the pipe and the CLI (`--enable D:`, `--exclude …`).
     A page in the Zebar settings popup or a launcher command; `status` already lists every drive with what a UI needs.
-  - **Launcher: exclude from a result** · `idea` · S. Ctrl+K on a folder result › "Exclude from the index" (`exclude` request).
-  - **Recent files in the launcher** · `idea` · S. The service's `recent` request (newest files, noisy places skipped) for the
-    home screen; replaces the "Recent files" idea above.
+  - **Launcher: exclude from a result** · `done` 2026-11-28; browse rows of excluded folders offer Include again. Ctrl+K on a folder result › "Exclude from the index" (`exclude` request).
+  - **Recent files in the launcher** · dropped 2026-11-28. The service's `recent` request lists mostly app data (Steam
+    manifests, torrent state, saves, build output) even with noisy places skipped; Windows' Recent items are used instead.
 - **Paths and environment variables** · `idea` · M. Typing `%appdata%`, `C:\…` or `~` behaves like Win+R: expands the
   path, suggests child folders as you type, and opens the folder or file.
 - **Explorer windows and tabs** · `idea` · M. Search already-open Explorer paths using the Shell windows collection. Investigate

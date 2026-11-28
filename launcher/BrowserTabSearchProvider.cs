@@ -42,6 +42,9 @@ internal sealed class BrowserTabSearchProvider(GlazeClient glaze, WindowIdentity
         foreach (var tab in _tabs)
         {
             var match = context.IsHome ? default : Fuzzy.Match(context.Query.Text, tab.Title);
+            // Long tab titles match almost anything letter by letter; in the mixed results that's noise. A scope
+            // (^ or <) still shows those loose matches, below the better ones.
+            if (context.Scope == SearchScope.All && match.Quality == MatchQuality.Subsequence) continue;
             if (!context.IsHome && !match.Found || !windows.TryGetValue(tab.Host.Id, out var host) || host.Handle != tab.Host.Handle) continue;
 
             yield return new ProviderResult(new ResultItem

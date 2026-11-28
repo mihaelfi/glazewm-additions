@@ -22,6 +22,9 @@ internal sealed record IndexListing(string Path, int Count, IReadOnlyList<IndexH
 /// </summary>
 internal sealed partial class IndexClient
 {
+    /// <summary>For actions that aren't tied to a provider (Exclude from the index). It keeps its own back-off.</summary>
+    public static IndexClient Shared { get; } = new();
+
     private const string PipeName = "GlazeIndex";
     private static readonly TimeSpan Backoff = TimeSpan.FromSeconds(15);
     private DateTime _retryAfter = DateTime.UtcNow.AddYears(-1);
@@ -55,6 +58,17 @@ internal sealed partial class IndexClient
             return new IndexListing(root.GetProperty("folder").GetProperty("path").GetString() ?? folder,
                 root.GetProperty("count").GetInt32(), items, null);
         });
+    }
+
+    /// <summary>Hides a folder from search (<paramref name="excluded"/>) or brings it back. Logs the outcome.</summary>
+    public async Task ExcludeAsync(string folder, bool excluded)
+    {
+        var request = new JsonObject { ["op"] = "exclude", ["path"] = folder, ["excluded"] = excluded };
+        var reply = await SendAsync(request.ToJsonString(), default);
+        string? error = reply is null ? "GlazeIndex isn't running" : Parse(reply, root =>
+            root.GetProperty("ok").GetBoolean() ? "" : root.TryGetProperty("error", out var e) ? e.GetString() ?? "failed" : "failed");
+        if (string.IsNullOrEmpty(error)) Log.Info($"{(excluded ? "excluded" : "included")} {folder} in the file index");
+        else Log.Info($"couldn't {(excluded ? "exclude" : "include")} {folder}: {error}");
     }
 
     /// <summary>Sends one request line; null when the service is down (then it backs off) or the reply is unreadable.</summary>

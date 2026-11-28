@@ -21,7 +21,10 @@ internal readonly record struct SearchContext(
 }
 
 /// <param name="Pinned">Shown above every ranked result, e.g. the action a query asks for directly.</param>
-internal readonly record struct ProviderResult(ResultItem Item, TextMatch Match, WmWindow? TargetWindow = null, bool Pinned = false);
+/// <param name="HomeSection">Home screen only: shown under this header (e.g. "Recently opened") instead of with the
+/// launcher's own recents, ordered by <paramref name="HomeRank"/> (higher first).</param>
+internal readonly record struct ProviderResult(ResultItem Item, TextMatch Match, WmWindow? TargetWindow = null, bool Pinned = false,
+    string? HomeSection = null, double HomeRank = 0);
 
 /// <summary>Searches data already in memory. Each result supplies its own actions (see ResultActions.cs).</summary>
 internal interface ISearchProvider
