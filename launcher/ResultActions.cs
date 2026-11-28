@@ -230,48 +230,55 @@ internal static class ActionKits
     private const string CopyGlyph = "";
     private static readonly string[] Runnable = [".exe", ".bat", ".cmd", ".com", ".msi"];
 
-    /// <summary>Opens a terminal in a folder: Windows Terminal when installed, otherwise PowerShell.</summary>
-    private static (string Title, Actions.ShellKind Kind) MainShell => Actions.HasWindowsTerminal
-        ? ("Open in Terminal", Actions.ShellKind.Terminal)
-        : ($"Open {Actions.PowerShellName}", Actions.ShellKind.PowerShell);
-
-    /// <summary>Actions for a folder from the file index: open, a shell in it (Ctrl+Enter, elevated with Ctrl+Shift+Enter).</summary>
-    public static IReadOnlyList<ResultAction> Folder(string path)
+    /// <summary>
+    /// A shell in <paramref name="folder"/>, each normal and elevated, as separate rows so filtering "admin" finds them:
+    /// Windows Terminal when installed, PowerShell (7 when on PATH) and Command Prompt. <paramref name="where"/> is "here"
+    /// (folders) or "in its folder" (files). <paramref name="mainShortcuts"/> puts Ctrl+Enter / Ctrl+Shift+Enter on the
+    /// first shell (folders; files use those keys for Open file location and Run as administrator). Each normal row also
+    /// runs its elevated twin with Shift+Enter.
+    /// </summary>
+    private static IEnumerable<ResultAction> ShellActions(string folder, string where, bool mainShortcuts)
     {
-        var (shellTitle, shell) = MainShell;
-        var list = new List<ResultAction>(8)
+        var shells = new List<(string Name, Actions.ShellKind Kind)>(3);
+        if (Actions.HasWindowsTerminal) shells.Add(("Terminal", Actions.ShellKind.Terminal));
+        shells.Add((Actions.PowerShellName, Actions.ShellKind.PowerShell));
+        shells.Add(("Command Prompt", Actions.ShellKind.Cmd));
+
+        for (int i = 0; i < shells.Count; i++)
         {
-            new("Open", "", () => { Actions.OpenPath(path); return Task.CompletedTask; }),
-            new($"{shellTitle} here", TerminalGlyph, () => Actions.OpenShell(path, shell, admin: false), Shortcut: KeyChord.CtrlEnter),
-            new($"{shellTitle} here as administrator", AdminGlyph, () => Actions.OpenShell(path, shell, admin: true),
-                Shortcut: KeyChord.CtrlShiftEnter),
-        };
-        if (shell != Actions.ShellKind.PowerShell)
-        {
-            list.Add(new($"Open {Actions.PowerShellName} here", TerminalGlyph, () => Actions.OpenShell(path, Actions.ShellKind.PowerShell, admin: false),
-                Shifted: new($"Open {Actions.PowerShellName} here as administrator", AdminGlyph,
-                    () => Actions.OpenShell(path, Actions.ShellKind.PowerShell, admin: true))));
+            var (name, kind) = shells[i];
+            bool main = mainShortcuts && i == 0;
+            var admin = new ResultAction($"Open {name} {where} as administrator", AdminGlyph,
+                () => Actions.OpenShell(folder, kind, admin: true), Shortcut: main ? KeyChord.CtrlShiftEnter : null);
+            yield return new ResultAction($"Open {name} {where}", TerminalGlyph, () => Actions.OpenShell(folder, kind, admin: false),
+                Shortcut: main ? KeyChord.CtrlEnter : null, Detail: i == 0 && !mainShortcuts ? folder : null,
+                Shifted: admin with { Shortcut = null });
+            yield return admin;
         }
-        list.Add(new("Open Command Prompt here", TerminalGlyph, () => Actions.OpenShell(path, Actions.ShellKind.Cmd, admin: false),
-            Shifted: new("Open Command Prompt here as administrator", AdminGlyph, () => Actions.OpenShell(path, Actions.ShellKind.Cmd, admin: true))));
-        list.Add(ShowInFolder(path));
-        list.Add(CopyPath(path));
-        return list;
     }
 
-    /// <summary>Actions for a file from the file index.</summary>
+    /// <summary>Actions for a folder from the file index: open, a shell in it (Ctrl+Enter, elevated with Ctrl+Shift+Enter).</summary>
+    public static IReadOnlyList<ResultAction> Folder(string path) =>
+    [
+        new("Open", "\uE838", () => { Actions.OpenPath(path); return Task.CompletedTask; }),
+        .. ShellActions(path, "here", mainShortcuts: true),
+        ShowInFolder(path),
+        CopyPath(path),
+    ];
+
+    /// <summary>Actions for a file from the file index: open, its folder in Explorer (Ctrl+Enter), run elevated
+    /// (Ctrl+Shift+Enter, programs only), and a shell in its folder, normal and elevated.</summary>
     public static IReadOnlyList<ResultAction> File(string path)
     {
         var folder = Path.GetDirectoryName(path) ?? path;
-        var (shellTitle, shell) = MainShell;
-        var list = new List<ResultAction>(6)
+        var list = new List<ResultAction>(10)
         {
-            new("Open", "", () => { Actions.OpenPath(path); return Task.CompletedTask; }),
+            new("Open", "\uE8E5", () => { Actions.OpenPath(path); return Task.CompletedTask; }),
             ShowInFolder(path) with { Shortcut = KeyChord.CtrlEnter },
         };
         if (Runnable.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
             list.Add(new("Run as administrator", AdminGlyph, () => Actions.RunFileAsAdmin(path), Shortcut: KeyChord.CtrlShiftEnter));
-        list.Add(new($"{shellTitle} in its folder", TerminalGlyph, () => Actions.OpenShell(folder, shell, admin: false), Detail: folder));
+        list.AddRange(ShellActions(folder, "in its folder", mainShortcuts: false));
         list.Add(CopyPath(path));
         return list;
     }

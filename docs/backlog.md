@@ -65,7 +65,10 @@ with providers and actions around it.
 - **Action list: closer filter matching** · `idea` · S. The action filter uses the result matcher, so loose subsequence
   matches show too (`end` also lists "Close window"). Consider prefix and word-start matches only for the short action list.
 - **Folder → Open terminal here** · `done` 2026-11-28, `verify` with the real keyboard. Indexed folders: Terminal here
-  (Ctrl+Enter), as administrator (Ctrl+Shift+Enter), PowerShell and Command Prompt here (Shift: as administrator).
+  (Ctrl+Enter), as administrator (Ctrl+Shift+Enter), PowerShell and Command Prompt here, each with its own "as
+  administrator" row.
+- **File → Terminal / PowerShell / cmd in its folder, also as administrator** · `done` 2026-11-28, `verify` with the real
+  keyboard (user request). Same rows as folders, opened in the file's own folder. Checked through the pipe only.
 - **Aliases for files and folders** · `idea` · S. Index results use `path:` usage keys, which `AliasBook` and its
   "Add alias…" rows don't know yet.
 - **Open with… for files** · `idea` · S. The Windows "Open with" dialog, and the app list for the file's extension.

@@ -62,8 +62,8 @@ the results is built from the selected result's actions: the default, Ctrl+K, an
 | Window | Focus window (↵) · Bring to this workspace (Ctrl+↵, when elsewhere) · Move to workspace › (Ctrl+1–9, +Shift stay) · Open file location · Close window (Ctrl+W) · End task |
 | With `@N` in the query | App: Open on workspace N (↵, Shift+↵ stay); window: Move to workspace N (↵, Shift+↵ stay) |
 | Folder, command | Their default action (Open in File Explorer / Run) |
-| Indexed folder | Open (↵) · Open in Terminal here (Ctrl+↵) · … as administrator (Ctrl+Shift+↵) · Open PowerShell 7 here · Open Command Prompt here (each +Shift: as administrator) · Open file location · Copy path |
-| Indexed file | Open (↵) · Open file location (Ctrl+↵) · Run as administrator (Ctrl+Shift+↵; `.exe`, `.bat`, `.cmd`, `.com`, `.msi`) · Open in Terminal in its folder · Copy path |
+| Indexed folder | Open (↵) · Open Terminal here (Ctrl+↵) · … as administrator (Ctrl+Shift+↵) · Open PowerShell 7 here · … as administrator · Open Command Prompt here · … as administrator · Open file location · Copy path |
+| Indexed file | Open (↵) · Open file location (Ctrl+↵) · Run as administrator (Ctrl+Shift+↵; `.exe`, `.bat`, `.cmd`, `.com`, `.msi`) · Open Terminal / PowerShell 7 / Command Prompt in its folder, each also as administrator · Copy path |
 | App, folder, command | Also: Add alias… (text entry) · Aliases › (when it has any; Enter on one removes it) |
 | Go to workspace, browser tab | One default action each |
 
@@ -102,6 +102,9 @@ the results is built from the selected result's actions: the default, Ctrl+K, an
   folder is the working directory (`wt -d .`, nothing to quote); elevated starts ignore that, so then the folder goes on the
   command line (`wt -d "D:\\"`, `pwsh -NoExit -Command "Set-Location -LiteralPath '…'"`, `cmd /k cd /d "…"`). Elevated
   starts run off the UI thread, like Run as administrator; a cancelled UAC prompt is logged, not an error.
+  Folders and files share the rows (`ActionKits.ShellActions`): every shell has a normal row and an "… as administrator"
+  row, so typing `admin` in Ctrl+K lists all elevated ones; Shift+↵ on a normal row also runs its elevated twin. Files open
+  the shell in the file's own folder, so two `GlazeIndex.exe` results open in their two different folders.
 - Close, End task, Open file location and the alias actions don't count towards frecency; workspace actions record usage for the target workspace.
 - **Text-entry levels and keep-open actions** are general: a `ResultAction` with `Input` builds its rows from the typed text,
   `ActionFlags.KeepOpen` runs an action without hiding the launcher (then searches `ThenQuery`, or rebuilds the list), and
@@ -329,12 +332,20 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-file-search-20261128-110655\`: before file and folder results
 - `.glzr\launcher\before-run-as-admin-20261128-104516\`: before Run as administrator
 - `.glzr\launcher\before-list-wrap-20261128-112255\`: before ↑ ↓ wrap-around
+- `.glzr\launcher\before-file-shells-20261128-120346\`: before shells in a file's folder
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-28
+- **Terminal, PowerShell and Command Prompt in a file's folder, each also as administrator** (user request: two
+  `GlazeIndex.exe` results, one in Program Files and one in the build folder, each needs a terminal in its own folder).
+  `ResultActions.cs`: new `ShellActions` builds the shell rows for both folders and files; every elevated variant is now a
+  row of its own (before, PowerShell and cmd had it only as Shift+↵), and folder rows read "Open Terminal here". Installed
+  through the supervisor. Checked through the pipe with snapshots: `glazeindex.exe` lists both copies; Ctrl+K on the build
+  copy shows the six shell rows with its folder, `admin` filters to the four elevated rows; folder shortcuts unchanged.
+  Not checked: opening the shells (elevated or not) with the real keyboard.
 - **↑ ↓ and Tab wrap around** in the results and the action list (user request). `MainWindow.xaml.cs`: `Move` takes
   `wrap`; Page Up / Page Down still stop at the ends. Installed through the supervisor (this build also carries the file
   search changes below; GlazeIndex wasn't running, so it logged `file search is off for now`). Checked through the pipe
