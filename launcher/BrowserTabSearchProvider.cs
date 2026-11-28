@@ -17,6 +17,7 @@ internal sealed class BrowserTabSearchProvider(GlazeClient glaze, WindowIdentity
     private Task? _refresh;
 
     public int Priority => 72;
+    public ResultKind Kind => ResultKind.Tab;
 
     public Task RefreshAsync(WmSnapshot snapshot)
     {
@@ -35,13 +36,13 @@ internal sealed class BrowserTabSearchProvider(GlazeClient glaze, WindowIdentity
 
     public IEnumerable<ProviderResult> Search(SearchContext context)
     {
-        if (context.IsHome || context.Query.WorkspaceToken is not null || _tabs.Count == 0) yield break;
+        if ((context.IsHome && !context.ListAll) || context.Query.WorkspaceToken is not null || _tabs.Count == 0) yield break;
 
         var windows = context.Wm.Windows.ToDictionary(window => window.Id, StringComparer.Ordinal);
         foreach (var tab in _tabs)
         {
-            var match = Fuzzy.Match(context.Query.Text, tab.Title);
-            if (!match.Found || !windows.TryGetValue(tab.Host.Id, out var host) || host.Handle != tab.Host.Handle) continue;
+            var match = context.IsHome ? default : Fuzzy.Match(context.Query.Text, tab.Title);
+            if (!context.IsHome && !match.Found || !windows.TryGetValue(tab.Host.Id, out var host) || host.Handle != tab.Host.Handle) continue;
 
             yield return new ProviderResult(new ResultItem
             {

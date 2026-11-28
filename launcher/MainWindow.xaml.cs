@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private readonly Actions _actions;
     private readonly IconCache _icons;
     private readonly FolderBrowser _browser;
+    private SearchScope _scope = SearchScope.All;
 
     private WmSnapshot _wm = WmSnapshot.Empty;
     private IntPtr _hwnd;
@@ -38,6 +39,7 @@ public partial class MainWindow : Window
         _browser = browser;
         InitializeComponent();
         _browser.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible && Browsing) Refresh(keepSelection: true); });
+        BuildScopeChips();
 
         Deactivated += (_, _) => HideLauncher(restoreFocus: false);
         PreviewKeyDown += OnPreviewKeyDown;
@@ -73,6 +75,8 @@ public partial class MainWindow : Window
         // there, and a one-digit "@N" means that monitor's workspace group, the same rule as Alt+N.
         var snapshot = _glaze.Snapshot;
         _wm = snapshot.WithTarget(WorkspaceGroups.TargetMonitor(snapshot, _previousForeground));
+        _scope = SearchScope.All;
+        Placeholder.Text = Scopes.Placeholder(_scope);
         QueryBox.Text = "";
         Refresh(keepSelection: false);
 
@@ -216,6 +220,13 @@ public partial class MainWindow : Window
     {
         Placeholder.Visibility = QueryBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (_settingText) return;
+        // A prefix typed first in the All scope (. < ? >) picks that scope and becomes its chip.
+        if (_scope == SearchScope.All && !InActionMode && !Browsing && QueryBox.Text.Length > 0
+            && Scopes.ForPrefix(QueryBox.Text[0]) is { } prefixed)
+        {
+            SetScope(prefixed, QueryBox.Text[1..]);
+            return;
+        }
         if (InActionMode) RenderActions();
         else Refresh(keepSelection: false);
     }
@@ -228,16 +239,21 @@ public partial class MainWindow : Window
         if (InActionMode) return;
         if (Browsing) { RenderBrowse(keepSelection); return; }
 
+        UpdateScopeStrip();
         var query = CurrentQuery;
-        var previousId = keepSelection && Results.SelectedIndex > 0 ? (Results.SelectedItem as ResultItem)?.Id : null;
-        var items = _search.Search(query, _wm);
+        // Keep a selection the user moved; the first row follows the new results.
+        int firstRow = (Results.ItemsSource as List<ResultItem>)?.FindIndex(i => !i.IsHeader) ?? 0;
+        var previousId = keepSelection && Results.SelectedIndex > firstRow ? (Results.SelectedItem as ResultItem)?.Id : null;
+        var items = _search.Search(query, _wm, _scope);
         foreach (var item in items) LoadIcon(item);
 
         Results.ItemsSource = items;
         Results.Visibility = items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (items.Count > 0)
         {
-            Results.SelectedIndex = previousId is null ? 0 : Math.Max(0, items.FindIndex(item => item.Id == previousId));
+            int kept = previousId is null ? -1 : items.FindIndex(item => item.Id == previousId);
+            Results.SelectedIndex = kept >= 0 ? kept : Math.Max(0, items.FindIndex(item => !item.IsHeader));
+            if (Results.SelectedIndex <= 1) Results.ScrollIntoView(items[0]); // the "Top hit" header too
             Results.ScrollIntoView(Results.SelectedItem);
         }
 
@@ -282,10 +298,22 @@ public partial class MainWindow : Window
         if (InActionMode) { UpdateActionFooter(); return; }
         if (Browsing) { UpdateBrowseFooter(); return; }
 
+        if (Results.SelectedItem is ResultItem { ScopeLink: not null })
+        {
+            Footer.Text = "↵ or → show all   Ctrl+Tab scope   Esc close";
+            return;
+        }
         var actions = SelectedActions(out var item);
         if (item is null || actions.Count == 0)
         {
-            Footer.Text = "Type to search apps, open windows and commands   Esc close";
+            var scopeName = Scopes.List.First(s => s.Scope == _scope).Name.ToLowerInvariant();
+            Footer.Text = (_scope, QueryBox.Text.Length) switch
+            {
+                (SearchScope.All, 0) => "Type to search   . apps   < windows and tabs   ? files   > commands   Ctrl+Tab scope   Esc close",
+                (SearchScope.All, _) => "No matches   Esc close",
+                (_, 0) => "Type to search   Backspace all results   Ctrl+Tab scope   Esc close",
+                _ => $"No {scopeName} match   Ctrl+Tab scope   Esc close",
+            };
             return;
         }
 
@@ -310,6 +338,7 @@ public partial class MainWindow : Window
         }
         if (actions[0].Shifted is not null) parts.Add("+Shift: stay");
         if (item.BrowsePath is not null) parts.Insert(1, "→ browse");
+        parts.Add("Ctrl+Tab scope");
         Footer.Text = string.Join("   ", parts);
     }
 
@@ -358,6 +387,7 @@ public partial class MainWindow : Window
         Crumb.Visibility = Visibility.Collapsed;
         SearchGlyph.Visibility = Visibility.Visible;
         Placeholder.Text = PlaceholderText;
+        UpdateScopeStrip();
         if (!restore) return;
         SetQueryText(_browseSavedQuery);
         Refresh(keepSelection: false);
@@ -378,6 +408,7 @@ public partial class MainWindow : Window
         CrumbGlyph.Text = "";
         CrumbText.Text = ShortPath(path);
         Placeholder.Text = "Filter this folder…";
+        UpdateScopeStrip();
     }
 
     /// <summary>Keeps the end of a long path, which says where you are: <c>…\Mods\Detailed Tooltips-248</c>.</summary>
@@ -476,6 +507,7 @@ public partial class MainWindow : Window
         Crumb.Visibility = Visibility.Visible;
         CrumbIcon.Source = item.Icon;
         CrumbGlyph.Text = item.Icon is null ? item.Glyph : "";
+        UpdateScopeStrip();
         SetQueryText("");
         RenderActions();
     }
@@ -531,10 +563,11 @@ public partial class MainWindow : Window
         Crumb.Visibility = Visibility.Collapsed;
         SearchGlyph.Visibility = Visibility.Visible;
         Placeholder.Text = PlaceholderText;
+        UpdateScopeStrip();
         if (Browsing) ShowBrowseChrome();
     }
 
-    private const string PlaceholderText = "Apps, windows, commands…   @3 → workspace 3";
+    private string PlaceholderText => Scopes.Placeholder(_scope);
 
     private void SetQueryText(string text)
     {
@@ -704,6 +737,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (Results.SelectedItem is ResultItem { ScopeLink: { } link }) { SetScope(link); return; }
         var actions = SelectedActions(out var item);
         if (item is null || actions.Count == 0) return;
         var chord = KeyChord.From(Key.Enter, modifiers);
@@ -765,7 +799,13 @@ public partial class MainWindow : Window
                 return true;
             case Key.Down: Move(1, wrap: true); return true;
             case Key.Up: Move(-1, wrap: true); return true;
+            case Key.Tab when ctrl:
+                if (!InActionMode && !Browsing) CycleScope(shift ? -1 : 1);
+                return true;
             case Key.Tab: Move(shift ? -1 : 1, wrap: true); return true;
+            case Key.Back when _scope != SearchScope.All && !InActionMode && !Browsing && QueryBox.Text.Length == 0:
+                SetScope(SearchScope.All);
+                return true;
             case Key.PageDown: Move(8); return true;
             case Key.PageUp: Move(-8); return true;
             case Key.Enter:
@@ -779,6 +819,7 @@ public partial class MainWindow : Window
                 {
                     // Folders open inside the launcher (Ctrl+K still lists their actions); everything else lists actions.
                     if (Results.SelectedItem is ResultItem { BrowsePath: { } folder }) OpenFolder(folder);
+                    else if (Results.SelectedItem is ResultItem { ScopeLink: { } link }) SetScope(link);
                     else OpenActions();
                 }
                 else if (ActionList.SelectedItem is ActionRow { Action.IsSubmenu: true } row) OpenSubmenu(row.Action);
@@ -818,9 +859,84 @@ public partial class MainWindow : Window
         int count = list.Items.Count;
         if (count == 0) return;
         int next = list.SelectedIndex + delta;
-        list.SelectedIndex = wrap ? ((next % count) + count) % count : Math.Clamp(next, 0, count - 1);
+        next = wrap ? ((next % count) + count) % count : Math.Clamp(next, 0, count - 1);
+        // Section headers can't be selected: keep going the same way (or back, at a clamped end).
+        int step = delta >= 0 ? 1 : -1;
+        for (int tries = 0; tries < count && IsHeaderRow(list, next); tries++)
+        {
+            int candidate = next + step;
+            if (wrap) next = ((candidate % count) + count) % count;
+            else if (candidate < 0 || candidate >= count) { step = -step; next += step; }
+            else next = candidate;
+        }
+        if (IsHeaderRow(list, next)) return;
+        list.SelectedIndex = next;
+        // At the top, show the first section's header too.
+        if (list == Results && next == 1 && IsHeaderRow(list, 0)) list.ScrollIntoView(list.Items[0]);
         list.ScrollIntoView(list.SelectedItem);
         UpdateFooter();
+    }
+
+    private static bool IsHeaderRow(ListBox list, int index) =>
+        index >= 0 && index < list.Items.Count && list.Items[index] is ResultItem { IsHeader: true };
+
+    // ---- scopes ----------------------------------------------------------------
+
+    private readonly List<(SearchScope Scope, Border Chip, TextBlock Name)> _chips = [];
+
+    /// <summary>The chip strip under the search box: the always-visible legend of the prefixes.</summary>
+    private void BuildScopeChips()
+    {
+        foreach (var (scope, name, prefix, _) in Scopes.List)
+        {
+            var label = new TextBlock { Text = name, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+            var panel = new StackPanel { Orientation = Orientation.Horizontal };
+            panel.Children.Add(label);
+            if (prefix is { } p)
+                panel.Children.Add(new TextBlock
+                {
+                    Text = p.ToString(), FontSize = 12, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)FindResource("MutedBrush"), FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+                });
+            var chip = new Border
+            {
+                Child = panel, CornerRadius = new CornerRadius(5), Padding = new Thickness(8, 2, 8, 3),
+                Margin = new Thickness(0, 0, 6, 0), BorderThickness = new Thickness(1), Cursor = Cursors.Hand,
+                ToolTip = prefix is { } q ? $"Type {q} first, or Ctrl+Tab" : "Ctrl+Tab",
+            };
+            chip.MouseLeftButtonUp += (_, e) => { SetScope(scope); e.Handled = true; };
+            ScopeStrip.Children.Add(chip);
+            _chips.Add((scope, chip, label));
+        }
+        UpdateScopeStrip();
+    }
+
+    private void UpdateScopeStrip()
+    {
+        ScopeStrip.Visibility = InActionMode || Browsing ? Visibility.Collapsed : Visibility.Visible;
+        foreach (var (scope, chip, name) in _chips)
+        {
+            bool on = scope == _scope;
+            chip.Background = on ? (Brush)FindResource("SelBrush") : Brushes.Transparent;
+            chip.BorderBrush = on ? (Brush)FindResource("SelectionBorderBrush") : Brushes.Transparent;
+            name.Foreground = (Brush)FindResource(on ? "TextBrush" : "MutedBrush");
+        }
+    }
+
+    /// <summary>Switches scope; <paramref name="text"/> replaces the query (what followed a typed prefix).</summary>
+    private void SetScope(SearchScope scope, string? text = null)
+    {
+        _scope = scope;
+        if (text is not null) SetQueryText(text);
+        Placeholder.Text = PlaceholderText;
+        Refresh(keepSelection: false);
+    }
+
+    private void CycleScope(int delta)
+    {
+        int index = Array.FindIndex(Scopes.List, s => s.Scope == _scope);
+        int count = Scopes.List.Length;
+        SetScope(Scopes.List[((index + delta) % count + count) % count].Scope);
     }
 
     private void Results_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)

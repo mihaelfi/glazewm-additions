@@ -2,9 +2,13 @@ namespace GlazeLauncher;
 
 /// <param name="AliasHits">The user's aliases that match the query, by target usage key.</param>
 internal readonly record struct SearchContext(
-    Query Query, WmSnapshot Wm, IReadOnlyDictionary<string, double> Recents, IReadOnlyDictionary<string, AliasHit> AliasHits)
+    Query Query, WmSnapshot Wm, IReadOnlyDictionary<string, double> Recents, IReadOnlyDictionary<string, AliasHit> AliasHits,
+    SearchScope Scope = SearchScope.All)
 {
     public bool IsHome => Query.Text.Length == 0;
+
+    /// <summary>An empty query in one scope (just <c>.</c> or <c>&gt;</c>): list everything, not only recent items.</summary>
+    public bool ListAll => IsHome && Scope != SearchScope.All;
 
     /// <summary>The better of a result's name match and its alias match; <paramref name="alias"/> is set when the alias won.</summary>
     public TextMatch WithAlias(string usageKey, TextMatch nameMatch, out string? alias)
@@ -23,6 +27,8 @@ internal readonly record struct ProviderResult(ResultItem Item, TextMatch Match,
 internal interface ISearchProvider
 {
     int Priority { get; }
+    /// <summary>Its section in the mixed results and the scopes that show it.</summary>
+    ResultKind Kind { get; }
     IEnumerable<ProviderResult> Search(SearchContext context);
 }
 
@@ -39,6 +45,7 @@ internal sealed class AppSearchProvider(ShellIndex index, WindowIdentity identit
     private Dictionary<AppEntry, List<WmWindow>> _running = [];
 
     public int Priority => 12;
+    public ResultKind Kind => ResultKind.App;
 
     public IEnumerable<ProviderResult> Search(SearchContext context)
     {
@@ -50,7 +57,7 @@ internal sealed class AppSearchProvider(ShellIndex index, WindowIdentity identit
             string? alias = null;
             if (context.IsHome)
             {
-                if (!context.Recents.ContainsKey(app.UsageKey)) continue;
+                if (!context.ListAll && !context.Recents.ContainsKey(app.UsageKey)) continue;
             }
             else
             {
@@ -108,6 +115,7 @@ internal sealed class WindowSearchProvider(WindowIdentity identity, Actions acti
     private const string SubtitlePrefix = "Window · ";
 
     public int Priority => 24;
+    public ResultKind Kind => ResultKind.Window;
 
     public IEnumerable<ProviderResult> Search(SearchContext context)
     {
@@ -148,6 +156,7 @@ internal sealed class WindowSearchProvider(WindowIdentity identity, Actions acti
 internal sealed class FolderSearchProvider(ShellIndex index, AliasBook aliases) : ISearchProvider
 {
     public int Priority => 16;
+    public ResultKind Kind => ResultKind.File;
 
     public IEnumerable<ProviderResult> Search(SearchContext context)
     {
@@ -157,7 +166,7 @@ internal sealed class FolderSearchProvider(ShellIndex index, AliasBook aliases) 
         {
             var id = $"folder:{folder.Id:D}";
             var match = context.WithAlias(id, Fuzzy.Match(context.Query.Text, folder.Name), out var alias);
-            if (context.IsHome ? !context.Recents.ContainsKey(id) : !match.Found) continue;
+            if (context.IsHome ? !context.ListAll && !context.Recents.ContainsKey(id) : !match.Found) continue;
 
             yield return new ProviderResult(new ResultItem
             {
@@ -184,6 +193,7 @@ internal sealed class FolderSearchProvider(ShellIndex index, AliasBook aliases) 
 internal sealed class WorkspaceSearchProvider(Actions actions) : ISearchProvider
 {
     public int Priority => 0;
+    public ResultKind Kind => ResultKind.Workspace;
 
     public IEnumerable<ProviderResult> Search(SearchContext context)
     {
@@ -223,6 +233,7 @@ internal sealed class CommandSearchProvider(Actions actions, AliasBook aliases) 
     ];
 
     public int Priority => 0;
+    public ResultKind Kind => ResultKind.Command;
 
     public IEnumerable<ProviderResult> Search(SearchContext context)
     {
@@ -231,7 +242,7 @@ internal sealed class CommandSearchProvider(Actions actions, AliasBook aliases) 
         foreach (var command in Commands)
         {
             var match = context.WithAlias(command.UsageKey, Fuzzy.Match(context.Query.Text, command.Title), out var alias);
-            if (context.IsHome ? !context.Recents.ContainsKey(command.UsageKey) : !match.Found) continue;
+            if (context.IsHome ? !context.ListAll && !context.Recents.ContainsKey(command.UsageKey) : !match.Found) continue;
 
             yield return new ProviderResult(new ResultItem
             {

@@ -15,7 +15,21 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
   The content fades and slides into place over 125 ms. The selected row has a lavender accent that fades in over 85 ms. Both effects respect Windows' animation setting. Typing, navigation, closing and opening a result respond immediately.
 - **↑ ↓ and Tab / Shift+Tab wrap around** in the results and the action list: ↑ on the top row goes to the last, ↓ on
   the last goes to the top. Page Up / Page Down move 8 rows and stop at the ends.
-- An **empty query** lists recent items for the current workspace, then every open window (other workspaces first) as a window switcher.
+- An **empty query** lists recent items for the current workspace ("Recent"), then every open window (other workspaces
+  first, "Open windows") as a window switcher.
+- **Sections:** with text in the All scope, the best match comes first under "Top hit", then a section per kind in a fixed
+  order: Windows (5 rows), Apps (4), Browser tabs (3), Commands (3), Files and folders (5). A section with more ends in a
+  "Show all N …" row ("Show more files and folders" for files, whose total the launcher doesn't know); Enter or → on it
+  switches to that scope. Each header names its prefix at the right (`? for all`). ↑ ↓ skip the headers.
+- **Scopes and prefixes:** a chip strip under the search box: All · Apps `.` · Windows `<` · Tabs · Files `?` · Commands
+  `>` (PowerToys Run's keywords where they fit; `>` lists commands, as in VS Code). Typing a prefix first in the All scope
+  switches to it and the character leaves the box; Ctrl+Tab / Ctrl+Shift+Tab cycle the chips (Tabs has no prefix); a click
+  on a chip works too; Backspace in an empty box returns to All; opening the launcher starts in All. Windows (`<`) covers
+  windows and browser tabs. In a scope, everything matching is one ranked list, and an empty query lists all of it (all
+  apps, all commands, all windows and tabs; Files lists recent files and the known folders). The Files scope asks the index
+  for 60 results instead of 12. In a scope a typed `.` or `?` is literal, so `?.gitignore` searches files for `.gitignore`.
+  Reserved for later providers, with PowerToys' meanings: `=` calculator, `??` web search, `$` Windows settings, `!!`
+  history, `_` Terminal profiles, `{` VS Code workspaces.
 - Typing searches **apps** (Start menu and Store apps, from `shell:AppsFolder`), **open windows** (by title or process),
   **open Chrome and Edge tabs**, **folders**, and **commands** (tiling direction, floating, fullscreen, redraw, reload config, pause, workspace Sync, re-index, quit).
   The app index skips packaged entries missing from the current user's installed package inventory, Windows Store stubs, and direct Store product links.
@@ -356,12 +370,25 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-file-shells-20261128-120346\`: before shells in a file's folder
 - `.glzr\launcher\before-action-list-20261128-155246\`: before the shell submenu, numbered rows and bold matches
 - `.glzr\launcher\before-folder-browse-20261128-160057\`: before folder browsing
+- `.glzr\launcher\before-scopes-20261128-162650\`: before sections, scope chips and prefixes
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-28
+- **Sections, scope chips and prefixes** (user request; prefixes agreed with the user after checking PowerToys Run's
+  docs). `Search.cs`: `ResultKind`, `SearchScope`, `Scopes` (chips, prefixes, placeholders), `SearchEngine.Search` takes a
+  scope and builds the top hit, sections and "Show all" rows, header rows (`ResultItem.IsHeader`, `ScopeLink`).
+  `SearchProviders.cs` / `BrowserTabSearchProvider.cs` / `FileSearchProvider.cs`: every provider has a `Kind`;
+  `SearchContext.Scope` and `ListAll` (an empty query in a scope lists everything); files ask for 60 in the Files scope.
+  `MainWindow.xaml`: header layout in the result template, a chip strip row. `MainWindow.xaml.cs`: prefixes in
+  `QueryBox_TextChanged`, Ctrl+Tab, Backspace back to All, ↑ ↓ skip headers, Enter / → on "Show all", scope-aware
+  footer and placeholder. Installed through the supervisor. Checked with pipe snapshots: the home screen's Recent / Open
+  windows headers; `chrome` → Top hit (the YouTube window), Apps, Browser tabs, Files and folders with their hints;
+  `>` lists all nine commands; `<` lists windows and tabs; `?dragon` searches files; ↑ from the top lands on "Show more
+  files and folders" and Enter opens the Files scope; Ctrl+Tab moves to Commands; `>chrome` says "No commands match".
+  Not checked with the real keyboard and mouse (chip clicks).
 - **Reverse the browse sort with Ctrl+Shift+S** (user request). `FolderBrowser.cs`: `Reversed` (reset by Ctrl+S), the
   listing cache key includes it, reversed listings take the end of the service's order (`IndexClient.ChildrenAsync` gained
   `offset`), name Z–A keeps folders first; the chip reads `name A–Z` / `name Z–A` / `largest first` / `smallest first` /

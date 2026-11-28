@@ -10,19 +10,21 @@ internal sealed class FileSearchProvider(IndexClient client, ShellIndex shell) :
 {
     public const string KeyPrefix = "path:";
     private const int Limit = 12;
+    private const int ScopedLimit = 60; // the Files scope (?)
     private const int MinLetters = 3;
     private const int MaxRecents = 8;
 
     private readonly Lock _gate = new();
-    private string? _wanted;
+    private (string Text, int Limit)? _wanted;
     private bool _running;
-    private string? _cachedQuery;
+    private (string Text, int Limit)? _cachedQuery;
     private IReadOnlyList<IndexHit> _cached = [];
 
     /// <summary>Raised on a background thread when results for the latest query arrived.</summary>
     public event Action? Changed;
 
     public int Priority => 0;
+    public ResultKind Kind => ResultKind.File;
 
     public IEnumerable<ProviderResult> Search(SearchContext context)
     {
@@ -34,10 +36,11 @@ internal sealed class FileSearchProvider(IndexClient client, ShellIndex shell) :
         IReadOnlyList<IndexHit> hits;
         lock (_gate)
         {
-            if (_cachedQuery == text) hits = _cached;
+            var key = (text, context.Scope == SearchScope.Files ? ScopedLimit : Limit);
+            if (_cachedQuery == key) hits = _cached;
             else
             {
-                Request(text);
+                Request(key);
                 var terms = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 hits = _cached.Where(h => terms.All(t => h.Path.Contains(t, StringComparison.OrdinalIgnoreCase))).ToList();
             }
@@ -46,10 +49,10 @@ internal sealed class FileSearchProvider(IndexClient client, ShellIndex shell) :
         return hits.Where(h => !known.Contains(h.Path)).Select(ToResult).ToList();
     }
 
-    private void Request(string text)
+    private void Request((string Text, int Limit) key)
     {
-        if (_wanted == text) return;
-        _wanted = text;
+        if (_wanted == key) return;
+        _wanted = key;
         if (_running) return;
         _running = true;
         _ = Task.Run(PumpAsync);
@@ -59,9 +62,9 @@ internal sealed class FileSearchProvider(IndexClient client, ShellIndex shell) :
     {
         while (true)
         {
-            string query;
-            lock (_gate) query = _wanted!;
-            var reply = await client.SearchAsync(query, Limit);
+            (string Text, int Limit) query;
+            lock (_gate) query = _wanted!.Value;
+            var reply = await client.SearchAsync(query.Text, query.Limit);
             bool latest;
             lock (_gate)
             {

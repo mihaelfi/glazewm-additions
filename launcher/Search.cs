@@ -11,6 +11,44 @@ internal sealed record LauncherCommand(string Title, string Subtitle, string Gly
     public string UsageKey => "cmd:" + Title;
 }
 
+/// <summary>What a provider returns; decides its section and which scopes show it.</summary>
+internal enum ResultKind { App, Window, Tab, File, Command, Workspace }
+
+/// <summary>The chip under the search box: everything, or one kind of result.</summary>
+internal enum SearchScope { All, Apps, Windows, Tabs, Files, Commands }
+
+internal static class Scopes
+{
+    /// <summary>The chips in order, with the prefix that selects each (PowerToys Run's keywords where they fit:
+    /// <c>.</c> programs, <c>&lt;</c> Window Walker, <c>?</c> file search; <c>&gt;</c> commands as in VS Code).</summary>
+    public static readonly (SearchScope Scope, string Name, char? Prefix, string Placeholder)[] List =
+    [
+        (SearchScope.All, "All", null, "Apps, windows, files, commands…   @3 → workspace 3"),
+        (SearchScope.Apps, "Apps", '.', "Search apps…"),
+        (SearchScope.Windows, "Windows", '<', "Search open windows and browser tabs…"),
+        (SearchScope.Tabs, "Tabs", null, "Search browser tabs…"),
+        (SearchScope.Files, "Files", '?', "Search files and folders…"),
+        (SearchScope.Commands, "Commands", '>', "Search commands…"),
+    ];
+
+    public static SearchScope? ForPrefix(char c) =>
+        List.FirstOrDefault(s => s.Prefix == c) is { Prefix: not null } hit ? hit.Scope : null;
+
+    public static string Placeholder(SearchScope scope) => List.First(s => s.Scope == scope).Placeholder;
+
+    /// <summary>The Windows scope (<c>&lt;</c>) covers everything already open: windows and browser tabs.</summary>
+    public static bool Includes(SearchScope scope, ResultKind kind) => scope switch
+    {
+        SearchScope.All => true,
+        SearchScope.Apps => kind == ResultKind.App,
+        SearchScope.Windows => kind is ResultKind.Window or ResultKind.Tab,
+        SearchScope.Tabs => kind == ResultKind.Tab,
+        SearchScope.Files => kind == ResultKind.File,
+        SearchScope.Commands => kind == ResultKind.Command,
+        _ => false,
+    };
+}
+
 internal sealed class ResultItem : INotifyPropertyChanged
 {
     public required string Id { get; init; }
@@ -31,6 +69,23 @@ internal sealed class ResultItem : INotifyPropertyChanged
     public int[]? FixedTitleMatches { get; init; }
     /// <summary>A folder → can open inside the launcher (folder browsing).</summary>
     public string? BrowsePath { get; init; }
+    /// <summary>A section header in the mixed results: not selectable, no actions.</summary>
+    public bool IsHeader { get; init; }
+    /// <summary>A "Show all …" row: Enter switches to this scope.</summary>
+    public SearchScope? ScopeLink { get; init; }
+
+    public Visibility RowVisibility => IsHeader ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility HeaderVisibility => IsHeader ? Visibility.Visible : Visibility.Collapsed;
+
+    public static ResultItem Header(string title, string hint = "") => new()
+    {
+        Id = "header:" + title,
+        Title = title,
+        Subtitle = hint,
+        UsageKey = "",
+        IsHeader = true,
+        Actions = _ => [],
+    };
 
     private int[]? _titleMatches;
     private int[]? _subtitleMatches;
@@ -191,7 +246,25 @@ internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, Usa
     public Task RefreshAsync(WmSnapshot snapshot) => Task.WhenAll(
         providers.OfType<IRefreshableSearchProvider>().Select(provider => provider.RefreshAsync(snapshot)));
 
-    public List<ResultItem> Search(Query query, WmSnapshot wm)
+    private const int MaxListed = 400;
+
+    /// <summary>Sections of the mixed results, in order, with how many rows each shows before "Show all".</summary>
+    private static readonly (ResultKind Kind, string Name, int Cap, SearchScope Scope)[] Sections =
+    [
+        (ResultKind.Window, "Windows", 5, SearchScope.Windows),
+        (ResultKind.App, "Apps", 4, SearchScope.Apps),
+        (ResultKind.Tab, "Browser tabs", 3, SearchScope.Tabs),
+        (ResultKind.Command, "Commands", 3, SearchScope.Commands),
+        (ResultKind.File, "Files and folders", 5, SearchScope.Files),
+    ];
+
+    /// <summary>
+    /// The rows for a query. In the All scope with text, the best match comes first as the top hit, then a section per
+    /// kind of result with a few rows each and a "Show all" row that opens that scope. In one scope, everything matching
+    /// is ranked in one list, and an empty query lists all of it. Header rows (<see cref="ResultItem.IsHeader"/>) are
+    /// part of the list.
+    /// </summary>
+    public List<ResultItem> Search(Query query, WmSnapshot wm, SearchScope scope = SearchScope.All)
     {
         query = query with { Text = query.Text.ToLowerInvariant() };
         var currentWs = wm.FocusedWorkspace?.Name;
@@ -199,12 +272,13 @@ internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, Usa
         var recents = home
             ? usage.Top(currentWs, int.MaxValue).ToDictionary(entry => entry.Key, entry => entry.Score)
             : [];
-        var context = new SearchContext(query, wm, recents, home ? AliasBook.NoHits : aliases.Match(query.Text));
+        var context = new SearchContext(query, wm, recents, home ? AliasBook.NoHits : aliases.Match(query.Text), scope);
 
-        var results = new List<(ProviderResult Result, double Score)>(64);
+        var results = new List<(ProviderResult Result, double Score, ResultKind Kind)>(64);
         var pinned = new List<ResultItem>();
         foreach (var provider in providers)
         {
+            if (!Scopes.Includes(scope, provider.Kind)) continue;
             foreach (var result in provider.Search(context))
             {
                 if (result.Pinned) pinned.Add(result.Item);
@@ -213,34 +287,85 @@ internal sealed class SearchEngine(IReadOnlyList<ISearchProvider> providers, Usa
                     double score = home
                         ? recents.GetValueOrDefault(result.Item.UsageKey)
                         : result.Match.Score + provider.Priority + UsageBoost(result.Item.UsageKey, currentWs);
-                    results.Add((result, score));
+                    results.Add((result, score, provider.Kind));
                 }
             }
         }
 
-        if (home)
+        if (home && scope == SearchScope.All)
         {
             var recentItems = results.Where(entry => entry.Result.TargetWindow is null && entry.Score > 0)
                 .OrderByDescending(entry => entry.Score)
-                .Take(MaxRecents);
+                .Take(MaxRecents).Select(entry => entry.Result.Item).ToList();
             var openItems = results.Where(entry => entry.Result.TargetWindow is not null)
                 .OrderByDescending(entry => OpenPriority(entry.Result.TargetWindow, currentWs))
                 .ThenBy(entry => entry.Result.TargetWindow?.WorkspaceName, StringComparer.Ordinal)
-                .ThenBy(entry => entry.Result.Item.Title, StringComparer.OrdinalIgnoreCase);
-            return pinned.Concat(recentItems.Concat(openItems).Take(MaxResults).Select(entry => entry.Result.Item)).ToList();
+                .ThenBy(entry => entry.Result.Item.Title, StringComparer.OrdinalIgnoreCase)
+                .Take(MaxResults).Select(entry => entry.Result.Item).ToList();
+            var rows = pinned;
+            if (recentItems.Count > 0) rows.AddRange([ResultItem.Header("Recent"), .. recentItems]);
+            if (openItems.Count > 0) rows.AddRange([ResultItem.Header("Open windows"), .. openItems]);
+            return rows;
         }
 
-        var ranked = pinned;
-        ranked.AddRange(results.OrderByDescending(entry => entry.Result.Match.Quality)
+        if (home)
+        {
+            // One scope, nothing typed: list all of it (open things in workspace order, the rest recent first, then A–Z).
+            var listed = pinned;
+            listed.AddRange(results
+                .OrderByDescending(entry => OpenPriority(entry.Result.TargetWindow, currentWs))
+                .ThenByDescending(entry => entry.Score)
+                .ThenBy(entry => entry.Result.TargetWindow?.WorkspaceName, StringComparer.Ordinal)
+                .ThenBy(entry => entry.Result.Item.Title, StringComparer.OrdinalIgnoreCase)
+                .Take(MaxListed)
+                .Select(entry => entry.Result.Item));
+            return listed;
+        }
+
+        var ordered = results.OrderByDescending(entry => entry.Result.Match.Quality)
             .ThenByDescending(entry => OpenPriority(entry.Result.TargetWindow, currentWs))
             .ThenByDescending(entry => entry.Score)
             .ThenBy(entry => entry.Result.Item.Title, StringComparer.OrdinalIgnoreCase)
             .ThenBy(entry => entry.Result.Item.Id, StringComparer.Ordinal)
-            .Take(MaxResults)
-            .Select(entry => entry.Result.Item));
-        foreach (var item in ranked) item.Highlight(query.Text);
+            .ToList();
+
+        var ranked = pinned;
+        if (scope != SearchScope.All)
+        {
+            ranked.AddRange(ordered.Take(MaxListed).Select(entry => entry.Result.Item));
+        }
+        else if (ordered.Count > 0)
+        {
+            // The top hit, then the sections without it.
+            var top = ordered[0];
+            ranked.Add(ResultItem.Header("Top hit"));
+            ranked.Add(top.Result.Item);
+            foreach (var (kind, name, cap, sectionScope) in Sections)
+            {
+                var inSection = ordered.Where(entry => entry.Kind == kind && !ReferenceEquals(entry.Result.Item, top.Result.Item)).ToList();
+                if (inSection.Count == 0) continue;
+                var prefix = Scopes.List.First(s => s.Scope == sectionScope).Prefix;
+                ranked.Add(ResultItem.Header(name, prefix is { } p ? $"{p} for all" : "Ctrl+Tab for all"));
+                ranked.AddRange(inSection.Take(cap).Select(entry => entry.Result.Item));
+                // Files come 12 at a time from the service, so their total isn't known here.
+                int total = inSection.Count + (kind == top.Kind ? 1 : 0);
+                if (inSection.Count > cap || kind == ResultKind.File && inSection.Count >= cap)
+                    ranked.Add(ShowAll(kind == ResultKind.File ? "Show more files and folders" : $"Show all {total} {name.ToLowerInvariant()}", sectionScope));
+            }
+        }
+        foreach (var item in ranked) if (!item.IsHeader) item.Highlight(query.Text);
         return ranked;
     }
+
+    private static ResultItem ShowAll(string title, SearchScope scope) => new()
+    {
+        Id = "showall:" + scope,
+        Title = title,
+        Glyph = "", // chevron right
+        UsageKey = "",
+        ScopeLink = scope,
+        Actions = _ => [],
+    };
 
     private static int OpenPriority(WmWindow? window, string? currentWorkspace)
     {

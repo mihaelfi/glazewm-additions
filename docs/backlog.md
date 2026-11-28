@@ -62,13 +62,24 @@ keep the root search mixed and open a command into its own page with its own fil
 Alfred browses folders with → and goes back with ←). Fluent Search and Windows Start show scope tabs you switch with the
 keyboard. VS Code's quick open lists every prefix when you type `?`.
 
-- **Sections in the mixed results** · `idea` · M. No prefix = everything, as now, but grouped: a top hit, then a section per
+- **Sections in the mixed results** · `done` 2026-11-28, `verify` with the real keyboard (see `launcher.md`, Using it). The proposal was: No prefix = everything, as now, but grouped: a top hit, then a section per
   provider with a cap (about 5 windows, 4 apps, 3 tabs, 5 files and folders, 3 commands) and a "Show all 248 files ›" row
   that opens that scope. Enter on the top hit stays one keystroke.
-- **Scope chips with prefixes** · `idea` · M. A strip under the search box: All · Apps · Windows · Tabs · Files · Folders ·
+- **Tabs: drop loose matches** · `idea` · S. With sections, browser tabs that match only as a scattered subsequence show
+  up as noise (`chrome` lists "ACCIDENTALLY Expose Their Own Crimes" by single letters). Require substring or better for
+  tabs, at least in the All scope.
+- **Scope chips with prefixes** · `done` 2026-11-28, `verify` with the real keyboard and mouse (user request; prefixes as
+  proposed below: `.` apps, `<` windows and tabs, `?` files, `>` commands; Tabs is a chip without a prefix). The proposal was: A strip under the search box: All · Apps · Windows · Tabs · Files · Folders ·
   Commands, each with its prefix in dim text, so it is the always-visible legend. Ctrl+Tab / Ctrl+Shift+Tab switch scope;
   typing a prefix at the start switches too and becomes the chip (it leaves the text box). Prefix characters to agree:
   avoid `@` (workspaces), `\` `:` `%` `~` (paths, planned); for example `>` commands, `<` windows, `/` files and folders.
+  2026-11-28, the user asked for PowerToys Run's keywords where they fit (its docs, checked that day: `<` Window Walker,
+  `.` Program, `?` Windows search, `>` Shell, `=` Calculator, `??` web search, `$` Windows settings, `!!` history, `@`
+  PowerToys, `:` registry, `//` URI, `_` Terminal profiles, `{` VS Code workspaces). Proposed mapping: `<` open windows and
+  browser tabs, `.` apps, `?` files and folders, `>` launcher and GlazeWM commands (PowerToys runs a shell command there;
+  ours are commands, as in VS Code's palette). Keep `@N` for workspaces. Reserve `=` `??` `$` `!!` `_` `{` for the providers
+  they mean in PowerToys, if we add them. A prefix becomes the chip at once; Backspace on an empty box removes the chip, so
+  a name starting with `.` or `?` can still be typed after it.
 - **Folder browsing** · `done` 2026-11-28, confirmed by the user (user request; see `launcher.md`, Using it).
   Built as proposed, with name as the default sort; Ctrl+Shift+S reverses the order (user request). Ideas left: remember the last sort, show hidden items on request,
   browse a typed path (`D:\Ga` → see "Paths and environment variables"). The proposal was: → on a folder result opens the folder inside the launcher (Ctrl+K

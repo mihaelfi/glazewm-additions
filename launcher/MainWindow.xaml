@@ -54,10 +54,24 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+      <Style.Triggers>
+        <!-- Section headers take no hover or clicks (action rows have no IsHeader: the fallback keeps them normal). -->
+        <DataTrigger Binding="{Binding IsHeader, FallbackValue=False}" Value="True">
+          <Setter Property="IsHitTestVisible" Value="False"/>
+        </DataTrigger>
+      </Style.Triggers>
     </Style>
 
     <DataTemplate x:Key="ResultTemplate" DataType="{x:Type local:ResultItem}">
       <Grid>
+      <!-- Section header in the mixed results: a small label and, at the right, how to see the whole section. -->
+      <DockPanel Visibility="{Binding HeaderVisibility}" Margin="-4,4,0,-3">
+        <TextBlock DockPanel.Dock="Right" Text="{Binding Subtitle}" FontSize="11" Foreground="{StaticResource MutedBrush}"
+                   VerticalAlignment="Bottom"/>
+        <TextBlock Text="{Binding Title}" FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"
+                   VerticalAlignment="Bottom"/>
+      </DockPanel>
+      <Grid Visibility="{Binding RowVisibility}">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="38"/>
           <ColumnDefinition Width="*"/>
@@ -89,6 +103,7 @@
                 CornerRadius="5" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center">
           <TextBlock Text="{Binding Badge}" FontSize="12" Foreground="{StaticResource AccentBrush}"/>
         </Border>
+      </Grid>
       </Grid>
     </DataTemplate>
     <DataTemplate x:Key="ActionTemplate" DataType="{x:Type local:ActionRow}">
@@ -140,6 +155,7 @@
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
     <Border Background="{StaticResource InputBrush}" CornerRadius="9" BorderThickness="1" Padding="13,9">
@@ -186,20 +202,23 @@
       </Grid>
     </Border>
 
-    <ListBox x:Name="Results" Grid.Row="1" Margin="0,8,0,0" MaxHeight="468"
+    <!-- Scope chips (built in code): the always-visible legend of the prefixes; Ctrl+Tab or a click switches. -->
+    <StackPanel x:Name="ScopeStrip" Grid.Row="1" Orientation="Horizontal" Margin="2,8,0,0"/>
+
+    <ListBox x:Name="Results" Grid.Row="2" Margin="0,6,0,0" MaxHeight="468"
              Background="Transparent" BorderThickness="0" Focusable="False" Foreground="{StaticResource TextBrush}"
              ItemContainerStyle="{StaticResource ResultContainer}" ItemTemplate="{StaticResource ResultTemplate}"
              ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden"
              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
              PreviewMouseLeftButtonUp="Results_PreviewMouseLeftButtonUp"/>
 
-    <ListBox x:Name="ActionList" Grid.Row="1" Margin="0,8,0,0" MaxHeight="468" Visibility="Collapsed"
+    <ListBox x:Name="ActionList" Grid.Row="2" Margin="0,8,0,0" MaxHeight="468" Visibility="Collapsed"
              Background="Transparent" BorderThickness="0" Focusable="False" Foreground="{StaticResource TextBrush}"
              ItemContainerStyle="{StaticResource ResultContainer}" ItemTemplate="{StaticResource ActionTemplate}"
              ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden"
              PreviewMouseLeftButtonUp="ActionList_PreviewMouseLeftButtonUp"/>
 
-    <TextBlock x:Name="Footer" Grid.Row="2" Margin="4,8,4,0" FontSize="11.5" Foreground="{StaticResource MutedBrush}"
+    <TextBlock x:Name="Footer" Grid.Row="3" Margin="4,8,4,0" FontSize="11.5" Foreground="{StaticResource MutedBrush}"
                TextTrimming="CharacterEllipsis"/>
   </Grid>
 </Window>
