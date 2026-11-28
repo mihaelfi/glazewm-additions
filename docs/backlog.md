@@ -154,9 +154,10 @@ with providers and actions around it.
 The setup should work on other screen sizes, resolutions and scaling, and be installable on a new PC without hand edits.
 
 What already adapts (checked in the code, 2026-11-27):
-- Zebar sizes are logical pixels, so they scale with Windows' display scaling. The bar is 44px tall at 100% and 66px at 150%.
+- Zebar sizes are logical pixels, so they scale with Windows' display scaling. The default 38px
+  bar is 38 physical pixels tall at 100% and 57 at 150%.
 - Popups are clamped to the monitor they open on (`openActivityPanel` in `src/activity-panel.ts` divides by the scale factor).
-- GlazeWM gaps scale with DPI (`scale_with_dpi: true`), so the 60px top gap keeps fitting the bar.
+- GlazeWM gaps scale with DPI (`scale_with_dpi: true`). The 54px top gap gives the default 38px bar a 16px margin.
 - The launcher's workspace manager finds the monitors at runtime and rewrites the monitor anchors itself.
 
 Items:
@@ -214,8 +215,21 @@ Items:
   Open questions: whether the config must declare every group's workspaces up front (test what GlazeWM does with workspaces
   bound to a monitor that isn't there), and whether a monitor should keep its group by `hardwareId` across docking.
 
+## Zebar: theme and layout
+
+- **Bar theme and adjustable height** · `done` 2026-11-28. Chamfered frames, subtle widget tints,
+  shared icon geometry, circular drive meters, grouped thermal cells, height-aware controls,
+  and the time centered below its date.
+- **Popup theme and CPU history grid** · `idea`. Extend the bar's visual style to the popups.
+  In CPU, show one history graph per logical processor on a shared scale and use a slimmer overall graph.
+
 ## Zebar: storage
 
+- **Storage bar palette** · `done` 2026-11-28. Added ice-blue capacity arcs, a matching frame and
+  icon, a navy gradient, and cyan/pink rate labels at idle. Verified with six Live rates readouts.
+- **Circular capacity meters on the bar** · `done` 2026-11-28. Show used capacity as an arc
+  around each drive letter. Per-drive rates or activity marks appear beside the ring.
+  Verified in the browser at 34, 38, and 50 px.
 - **Disk read and write rates per drive** · `done` 2026-11-27. The bar supports per-drive Live rates
   with fixed-width readouts, Activity marks, or None. The Storage popup shows exact speeds for all
   listed drives. See [Zebar storage](zebar.md#storage-card-and-popup-srcdrivestsx-srcstorage-paneltsx).

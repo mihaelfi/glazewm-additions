@@ -13,8 +13,9 @@ May 2026 setup, which used YASB instead of Zebar, was archived to
 `%USERPROFILE%\.glzr\glazewm-backup-20261122-193910\` (it has its own `CHANGELOG.md`).
 It is not used now.
 
-Unchanged from the defaults: gaps (inner 20px; outer 60px top and 20px on the other
-sides, which leaves room for the 44px bar), border colours, and `hide_method: cloak`.
+The gaps are 20px inside and on the outer left, right and bottom. The outer top gap is
+54px for the default 38px Zebar bar and a 16px margin. The top gap can be changed separately
+from Zebar's height setting. Border colours and `hide_method: cloak` follow the defaults.
 
 ### Workspace groups, one per monitor (up to six)
 
@@ -71,6 +72,7 @@ GlazeWM's focused monitor (wrong after clicking an empty desktop), and started P
 
 ## Backups
 
+- `.glzr\glazewm\config.yaml.before-bar-height-20261128-123443`: before reducing the top gap.
 - `.glzr\glazewm\config.yaml.before-mass-effect-2-20261127-213510`: before adding the game ignore rule.
 - `.glzr\glazewm\config.before-monitor-workspaces-20261127-105357.yaml`: default config before the workspace groups
 - `.glzr\glazewm\backup-before-nine-workspaces-20261127-110114\`: config + script from the 10–19 / 20–29 version
@@ -83,6 +85,8 @@ GlazeWM's focused monitor (wrong after clicking an empty desktop), and started P
 Newest first.
 
 ### 2026-11-28
+- **Reduced the top gap to 54px** in the live `config.yaml` for the slimmer Zebar bar. GlazeWM
+  accepted the reload.
 - **Mass Effect 2 confirmed** by the user: a fresh launch shows the game. Noted that GlazeWM 3.10.1 leaves hidden
   windows cloaked when it exits (known issues); no config change.
 

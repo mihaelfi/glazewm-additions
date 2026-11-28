@@ -90,6 +90,7 @@ Uses the same sources as Task Manager, so it works for any vendor:
 - `driveActivity` maps drive letters to their bar mode. The default is empty. Saving removes invalid
   letters and capacity-only entries. A hidden drive keeps its saved mode.
 - Older settings files get `bar.network: true` by default.
+- `barHeight` defaults to 38 logical pixels and is clamped to 34–52.
 
 ## Timer (`timer.rs`)
 
@@ -111,6 +112,11 @@ within a few hundred ms, so a single stop-then-copy can fail with "file in use".
 - Live collector backups are listed in [Zebar](zebar.md#backups).
 
 ## Change log
+
+### 2026-11-28
+- **Persisted bar height** in the shared settings in `native/settings.rs`. The collector
+  migrates older settings files and bounds the new field. The deployed collector saved and
+  reapplied the height on both bars during the live test.
 
 ### 2026-11-27
 - **Added network throughput history.** `network.rs` reads Windows interface counters, `main.rs`

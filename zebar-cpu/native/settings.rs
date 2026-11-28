@@ -14,12 +14,14 @@ pub const MAX_HISTORY_SECONDS: usize = 15 * 60;
 const FILE_NAME: &str = "settings.json";
 const MAX_ADAPTER_NAME: usize = 128;
 const DEFAULT_CLOCK_FORMAT: &str = "yyyy-MM-dd HH:mm";
+const DEFAULT_BAR_HEIGHT: u32 = 38;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     /// How far back graphs, heatmaps and process averages look.
     pub history_minutes: u32,
+    pub bar_height: u32,
     pub bar: BarItems,
     /// Drive letters shown in storage. `None` shows every drive, including new ones.
     pub drives: Option<Vec<String>>,
@@ -53,7 +55,7 @@ pub struct BarItems {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            history_minutes: 1, bar: BarItems::default(), drives: None, gpu_adapter: None,
+            history_minutes: 1, bar_height: DEFAULT_BAR_HEIGHT, bar: BarItems::default(), drives: None, gpu_adapter: None,
             drive_activity: BTreeMap::new(),
             clock_format: DEFAULT_CLOCK_FORMAT.into(),
             repeat_timer_chime: true,
@@ -70,6 +72,7 @@ impl Default for BarItems {
 impl Settings {
     /// Fixes values a hand edit or an old file could get wrong.
     fn sanitized(mut self) -> Self {
+        self.bar_height = self.bar_height.clamp(34, 52);
         if !HISTORY_CHOICES.contains(&self.history_minutes) {
             self.history_minutes = Settings::default().history_minutes;
         }

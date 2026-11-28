@@ -11,6 +11,7 @@ export type DriveActivityMode = 'none' | 'marks' | 'rates';
 export interface Settings {
   /** How far back graphs, heatmaps and process averages look. */
   historyMinutes: number;
+  barHeight: number;
   bar: { storage: boolean; ram: boolean; cpu: boolean; gpu: boolean; network: boolean };
   /** Drive letters to show. `null` shows every drive, including ones added later. */
   drives: string[] | null;
@@ -25,9 +26,13 @@ export interface Settings {
 export type BarItem = keyof Settings['bar'];
 
 export const HISTORY_CHOICES = [1, 5, 10, 15];
+export const MIN_BAR_HEIGHT = 34;
+export const MAX_BAR_HEIGHT = 52;
+export const DEFAULT_BAR_HEIGHT = 38;
 
 export const DEFAULT_SETTINGS: Settings = {
   historyMinutes: 1,
+  barHeight: DEFAULT_BAR_HEIGHT,
   bar: { storage: true, ram: true, cpu: true, gpu: true, network: true },
   drives: null,
   driveActivity: {},
@@ -73,6 +78,7 @@ export function useSettings() {
     setSettings({
       ...DEFAULT_SETTINGS,
       ...snapshot.settings,
+      barHeight: Math.max(MIN_BAR_HEIGHT, Math.min(MAX_BAR_HEIGHT, snapshot.settings.barHeight ?? DEFAULT_BAR_HEIGHT)),
       bar: { ...DEFAULT_SETTINGS.bar, ...snapshot.settings.bar },
       clockFormat: validClockFormat(format) ? format : DEFAULT_CLOCK_FORMAT,
     });

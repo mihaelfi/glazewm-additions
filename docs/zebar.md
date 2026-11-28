@@ -13,7 +13,7 @@ pack `cpu-activity`, widget `bar`, preset `default` (backup: `settings.before-cp
 
 | Widget | HTML | Window | Purpose |
 |---|---|---|---|
-| `bar` | `dist/bar.html` | 100% × 44px, top-left, all monitors, `zOrder: normal` | The status bar |
+| `bar` | `dist/bar.html` | 100% × 38px by default, top-left, all monitors, `zOrder: normal` | The status bar |
 | `cpu-activity` | `dist/panel.html` | 576 × 780, top-right, `top_most`, focused | CPU details pop-up |
 | `ram-activity` | `dist/ram.html` | 576 × 620, top-right, `top_most`, focused | RAM details pop-up |
 | `gpu-activity` | `dist/gpu.html` | 576 × 700, top-right, `top_most`, focused | GPU details pop-up |
@@ -23,7 +23,7 @@ pack `cpu-activity`, widget `bar`, preset `default` (backup: `settings.before-cp
 | `clock` | `dist/clock.html` | 384 × 492, top-right, `top_most`, focused | Month calendar and persistent timer |
 
 The bar opens the panels with `startWidget` on the bar's own monitor
-(`src/activity-panel.ts`, offset −12px / 50px, size clamped to the monitor). The
+(`src/activity-panel.ts`, offset −12px and 6px below the current bar, size clamped to the monitor). The
 heights in code come from `panelHeights` in `activity-panel.ts`, not from the zpack
 presets, so change both together. A panel closes on Esc, on blur, with its × button,
 or when its bar button is clicked again.
@@ -56,7 +56,14 @@ weather (°C) → input language → **network** (connection icon and live rates
 - **Input language** is shortened to the first part of the layout code, in upper case (e.g. `en-US` → `EN`).
 - Clicking a workspace runs `focus --workspace <name>`. Clicking the tiling toggle runs `toggle-tiling-direction`.
 - **GlazeWM command strings: never quote arguments** (see PROJECT_STATE). The bar used `JSON.stringify` here until 2026-11-27, which broke workspace clicks and the binding-mode button.
-- Theme: dark navy bar `#151b30`, accent `#b6acff`; CPU in purple tones, RAM in teal, GPU in green (`src/widget.css`, `src/history-graph.tsx`). Compact graphs use the `.sparkline` class.
+- The bar theme lives in `src/bar.css` and `src/bar-icon.tsx`: chamfered frames, consistent outline
+  icons, and subtle per-widget tints. RAM is teal, GPU green, CPU blue, Storage ice blue, and Network
+  violet with distinct download and upload arrows. On narrow screens the middle cards scroll
+  horizontally, with workspace controls, Network and the clock kept accessible.
+- **Height:** Settings → Bar height sizes the native window to 34–52 logical pixels
+  (38 by default). Each bar keeps its monitor's width and sizes its controls and canvases to fit.
+  GlazeWM's top gap controls space reserved for tiling and is set to 54px in this install.
+  [Zebar widget window permissions](https://github.com/glzr-io/zebar/blob/v3.3.1/packages/desktop/capabilities/widget.json)
 
 ## Workspace app icons
 
@@ -82,8 +89,9 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
 - **Feed** (`src/metrics-feed.ts`): polls once a second with POST, because Zebar's
   service worker caches cross-origin GETs. If the poll fails, the bar spawns the collector
   through `shellSpawn`, at most once every 6 s. Status is `starting` → `live` → `unavailable`, and the UI shows `—` when not live.
-- **Bar**: the RAM button has a compact teal `HistoryGraph` sparkline; the CPU button has
-  a `Heatmap` canvas (one row per logical CPU, blue→red). The GPU button is a green sparkline of the
+- **Bar**: RAM has a compact teal sparkline. The CPU heatmap uses spaced square cells from cold blue
+  to hot red. Adjacent logical processors are grouped to fit the height. Each cell keeps the highest
+  load in its group and time bucket. The GPU button is a green sparkline of the
   selected adapter's load plus %; its tooltip shows the GPU name and temperature. It is hidden if the collector reports no GPUs.
 - **CPU panel** (`src/panel.tsx`): total, busiest core, an all-core heatmap with a colour
   key, a graph of the selected core over the history window with its peak, a clickable grid of logical processors,
@@ -99,11 +107,11 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
 
 ## Storage card and popup (`src/drives.tsx`, `src/storage-panel.tsx`)
 
-- **Bar card**: one framed card, like RAM/CPU/GPU, with a mini bar chart: one small
-  vertical bar per drive, filled to its **used** %, with the letter underneath. A lighter slate-blue
-  track makes the full meter height visible above the fill. Each drive can show
-  **Live rates** (stacked R/W with fixed-width values and units), **Activity marks** (cyan read above
-  pink write, bright with activity), or **None** (capacity only, the default).
+- **Bar card**: one framed card, like RAM/CPU/GPU, with a circular capacity meter around each
+  drive letter. The arc shows **used** capacity and the contrasting track shows the free portion.
+  Each drive can show **Live rates** (stacked R/W with fixed-width values and units beside the ring),
+  **Activity marks** (cyan read above pink write beside the ring, bright with activity), or
+  **None** (capacity only, the default).
   The hover tooltip lists free space for each drive and explains the marks when shown. Clicking toggles the popup.
 - **Storage popup** (`storage-activity`, 576 × 470): a compact summary strip and a two-column grid
   of all visible drives, with navy panels and chamfered corners. Each tile shows capacity, live
@@ -118,7 +126,9 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
 - **Units:** capacity uses binary GB/TB labels to match Explorer. Below 10 GB one decimal, below
   1 TB whole GB, from 1 TB up TB with one decimal (`formatDriveSize`). Throughput uses decimal
   B/s through TB/s, with up to three significant digits, `0 B/s` for idle and `—` for unavailable.
-- **Colours:** blue normally, amber at ≥ 85% used, red at ≥ 95% used, on the card bars, the row bars and the letters.
+- **Colours:** the Storage card's icon, frame and normal arcs use an ice-blue accent over a navy
+  gradient, with slate-blue tracks. Read and write labels stay cyan and pink at idle. Bar rings
+  and popup capacity meters turn amber at ≥ 85% used and red at ≥ 95% used.
 - **Data:** both views get capacity from Zebar's built-in `disk` provider every 60 s and read/write
   rates from the one-second collector feed. The popup requests the selected history window using
   `view=drives` and plots gaps when a reading is missing.
@@ -144,6 +154,7 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
 ## Clock, calendar and timer (`src/clock-panel.tsx`, `src/clock.ts`, `src/timer.ts`; collector side in `native/timer.rs`)
 
 - The far-right clock button opens on the bar's monitor with Calendar selected. The popup shows local time with seconds, a locale-aware month grid with Today and month navigation, a Timer tab, and a link to shared Settings.
+- The default ISO date is centered above the time on the bar. Timer progress sits under the separate countdown.
 - Timer offers immediate 5, 10 and 15 minute presets and a custom duration in hours/minutes (up to 999 h 59 min). There is one active timer across all bars. The digits count down while the progress line fills from left to right as time elapses. Cancel from the Timer tab.
 - At expiry, the clock briefly pulses when motion is enabled and the elapsed line turns amber. The collector plays a Windows chime about every four seconds until dismissal. Turn off **Repeat timer chime until dismissed** in shared Settings under **Clock** for a single chime. Click a clock button or Dismiss timer in the Timer tab to silence and clear it.
 - `/history` carries timer state to each bar on its existing feed. The open popup reads `/timer` once and listens for actions over a BroadcastChannel. The display uses Zebar's date provider for ticks and does not send per-second timer requests. Persistence is described in the collector doc.
@@ -161,6 +172,7 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
   | `clockFormat` | Luxon format preset or custom string | `yyyy-MM-dd HH:mm` | Date and time on the bar. Settings includes a live preview and a syntax tooltip |
   | `repeatTimerChime` | boolean | `true` | Repeat the expiry chime until dismissal. Off plays it once |
   | `historyMinutes` | 1, 5, 10, 15 | 1 | Window for every graph, heatmap, "N ago" label and the CPU process Avg/Peak |
+  | `barHeight` | 34–52 logical pixels | 38 | Height of the Zebar bar on every monitor |
   | `bar.storage/ram/cpu/gpu/network` | booleans | all `true` | Which cards the bar shows. At least one must stay, because the cards are the only way into the popups (enforced in the UI and the collector) |
   | `drives` | letters or `null` | `null` = all | Drives in the storage card **and** popup. Selecting every drive saves `null`, so drives added later show up |
   | `driveActivity` | drive letter → `marks` or `rates` | empty | Bar activity display per drive. Missing letters are **None**. Hiding a drive keeps its activity preference |
@@ -205,15 +217,25 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 
 ## Known issues and unverified
 
+- Changing bar height does not change GlazeWM's top gap. Adjust the gap separately for a different tiling margin.
 - Zebar provides the SSID for the default Wi-Fi interface. Other active Wi-Fi adapters still show
   traffic history and any local addresses the provider supplies.
-- Check how many Live rates readouts fit on a narrow monitor with several workspaces and all other status cards enabled.
+- Browser checks confirmed six drive rings and one Live rates readout fit at 1280 × 34 px in the test layout.
+  All six Live rates readouts fit at 1920 × 38 px. Check how many simultaneous readouts fit on narrow
+  native bars with several workspaces.
 - Check native clock popup placement and dismissal on both monitors, and listen for the chime on the desktop.
 - **Not yet portable:** the installed `zpack.json` uses the absolute collector path `C:\Users\mihae\...`. Zebar matches the program as an exact string, so a relative path can't work; the planned install script writes the real path (see the backlog's install script item).
 - The panel toggle has only been tested with the bar on the primary monitor. The other monitor's bar should behave the same way (each bar tracks its own panels), but that hasn't been checked.
 
 ## Backups
 
+- `.glzr\zebar\cpu-activity\dist.before-storage-colors-20261128-131217`: installed assets before the Storage palette change.
+- `.glzr\zebar\cpu-activity\dist.before-drive-rings-20261128-130631`: installed assets before the circular capacity meters.
+- `.glzr\zebar\cpu-activity\dist.before-clock-center-20261128-130008`: installed assets before centering the clock.
+- `.glzr\zebar\cpu-activity\dist.before-bar-theme-20261128-123340`,
+  `zebar-cpu-collector.exe.before-bar-theme-20261128-123340`, and
+  `zpack.json.before-bar-theme-20261128-123340`: installed pack before the bar refresh.
+- `settings.json.before-bar-height-test-20261128-123425`: before testing native resizing.
 - `.glzr\zebar\cpu-activity\dist.before-network-position-20261127-212520`: installed assets before moving Network beside the clock.
 - `.glzr\zebar\cpu-activity\dist.before-network-widget-20261127-212106`,
   `zebar-cpu-collector.exe.before-network-widget-20261127-212106`, and
@@ -233,6 +255,22 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 ## Change log
 
 Newest first. Covers the whole pack, front end and collector.
+
+### 2026-11-28
+- **Refined the Storage bar palette** in `src/bar.css` with brighter ice-blue arcs, a matching icon
+  and frame, a navy gradient, and colored read/write labels at idle. Verified capacity warning colors
+  and six simultaneous Live rates readouts in the browser, then deployed the rebuilt assets.
+- **Added circular drive meters** in `src/drives.tsx` and `src/bar.css`. Centered each drive letter
+  in its ring and placed the per-drive activity display beside it. Verified all three activity
+  modes in the browser at bar heights of 34, 38, and 50 px. Deployed the rebuilt assets.
+- **Centered the time under the date** in `src/bar.css`. Verified text alignment in the browser
+  and deployed the rebuilt assets.
+- **Restyled the bar and added a height setting.** Added `src/bar.css`, `bar-icon.tsx` and
+  `bar-window.ts`. Updated `bar.tsx`, `drives.tsx`, `heatmap.tsx`, `activity-panel.ts`,
+  `clock.css`, `widget.css`, Settings and both manifests. The bar now uses horizontal drive
+  meters and thermal CPU cells, with timer progress beneath the countdown. Browser checks covered
+  narrow and tall layouts, 64 logical processors, clock and timer, and both drive activity modes.
+  Deployed and verified both live bars resize from 38 to 50 logical pixels and back.
 
 ### 2026-11-27
 - **Moved Network immediately left of the clock** in `src/bar.tsx`. Verified the position and deployed the rebuilt assets.

@@ -1,0 +1,18 @@
+const paths = {
+  storage: 'M3 6c0-1.7 4-3 9-3s9 1.3 9 3-4 3-9 3-9-1.3-9-3Zm0 0v12c0 1.7 4 3 9 3s9-1.3 9-3V6M3 12c0 1.7 4 3 9 3s9-1.3 9-3',
+  cpu: 'M6 6h12v12H6zM9 9h6v6H9zM9 3v3m3-3v3m3-3v3m-6 12v3m3-3v3m3-3v3M3 9h3m-3 3h3m-3 3h3m12-6h3m-3 3h3m-3 3h3',
+  ram: 'M3 7h18v10H3zM1 8v8m4 1v3m3-3v3m4-3v3m4-3v3m3-3v3M6 10h3v4H6zm5 0h3v4h-3zm5 0h3v4h-3z',
+  gpu: 'M3 5v14m0-12h18v10h-3m-15 0h12v2h3v-2M11 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm5 3h3',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-14v5l3 2',
+  timer: 'M12 21a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm0-14V3m-2 0h4m4 5 2-2m-8 5v4',
+  battery: 'M2 7h18v10H2zm18 3h2v4h-2M5 10h10v4H5z',
+};
+
+export function BarIcon(props: { name: keyof typeof paths }) {
+  return (
+    <svg class={`bar-icon bar-icon-${props.name}`} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d={paths[props.name]} />
+    </svg>
+  );
+}

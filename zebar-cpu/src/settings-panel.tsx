@@ -4,7 +4,7 @@ import { useCloseActivityPanel } from './activity-panel';
 import { ClockSettings } from './clock-settings';
 import { formatDriveSize, useDrives } from './drives';
 import { requestMetrics, type GpuAdapter } from './metrics-feed';
-import { type BarItem, driveActivityMode, type DriveActivityMode, HISTORY_CHOICES, type Settings, useSettings } from './settings';
+import { type BarItem, driveActivityMode, type DriveActivityMode, HISTORY_CHOICES, MAX_BAR_HEIGHT, MIN_BAR_HEIGHT, type Settings, useSettings } from './settings';
 import './widget.css';
 import './clock.css';
 
@@ -92,6 +92,18 @@ function SettingsPanel() {
           </div>
         </section>
 
+        <section class="settings-section" aria-labelledby="bar-height-setting">
+          <h2 id="bar-height-setting">Bar height</h2>
+          <label class="settings-bar-height">
+            <select aria-label="Bar height" value={settings().barHeight}
+              onChange={event => update({ barHeight: Number(event.currentTarget.value) })}>
+              <For each={Array.from({ length: MAX_BAR_HEIGHT - MIN_BAR_HEIGHT + 1 }, (_, index) => index + MIN_BAR_HEIGHT)}>
+                {height => <option value={height}>{height} px</option>}
+              </For>
+            </select>
+          </label>
+          <p>GlazeWM’s top gap controls the space above tiled windows.</p>
+        </section>
         <section class="settings-section" aria-labelledby="bar-setting">
           <h2 id="bar-setting">Show on the bar</h2>
           <div class="check-grid">

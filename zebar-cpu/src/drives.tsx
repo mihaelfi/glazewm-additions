@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Match, Switch } from 'solid-js';
+import { createMemo, createSignal, For, Match, Show, Switch } from 'solid-js';
 import { createProvider, type Disk } from 'zebar';
 import type { DriveRates } from './metrics-feed';
 import type { DriveActivityMode } from './settings';
@@ -105,10 +105,17 @@ export function DriveBars(props: {
           const mode = () => props.mode(drive.letter);
           const read = createMemo(() => props.rates?.[drive.letter]?.read);
           const write = createMemo(() => props.rates?.[drive.letter]?.write);
+          const used = Math.max(0, Math.min(100, drive.used));
           return (
-            <span class={`drive-bar ${driveLevel(drive)}`} classList={{ 'with-activity': mode() !== 'none' }}>
+            <span class={`drive-bar ${driveLevel(drive)}`}>
               <span class="drive-bar-capacity">
-                <i class="drive-bar-meter" style={{ '--used': `${drive.used}%` }} />
+                <svg class="drive-bar-meter" viewBox="0 0 32 32">
+                  <circle class="drive-capacity-track" cx="16" cy="16" r="13" />
+                  <Show when={used > 0}>
+                    <circle class="drive-capacity-fill" cx="16" cy="16" r="13" pathLength="100"
+                      stroke-dasharray={`${used} 100`} transform="rotate(-90 16 16)" />
+                  </Show>
+                </svg>
                 <small>{drive.letter}</small>
               </span>
               <Switch>

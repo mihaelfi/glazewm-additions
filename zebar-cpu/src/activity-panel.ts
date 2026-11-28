@@ -20,8 +20,14 @@ const CHANNEL = 'cpu-activity-panels';
 const CLOSED_BY_CLICK_MS = 600;
 
 /** Opens a popup at the top right of the monitor this widget is on. */
-export async function openActivityPanel(name: PanelName) {
-  const [monitor, monitors] = await Promise.all([currentMonitor(), availableMonitors()]);
+export async function openActivityPanel(name: PanelName, barOffset?: number) {
+  const [monitor, monitors, position] = await Promise.all([
+    currentMonitor(),
+    availableMonitors(),
+    barOffset === undefined ? currentWidget().tauriWindow.outerPosition().catch(() => undefined) : undefined,
+  ]);
+  const inheritedOffset = monitor && position ? (position.y - monitor.position.y) / monitor.scaleFactor : NaN;
+  const offset = barOffset ?? (Number.isFinite(inheritedOffset) ? Math.max(0, Math.round(inheritedOffset)) : 44);
   monitors.sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y);
   const index = monitors.findIndex(candidate =>
     candidate.position.x === monitor?.position.x && candidate.position.y === monitor.position.y,
@@ -30,13 +36,13 @@ export async function openActivityPanel(name: PanelName) {
   const preferredWidth = name === 'clock' ? 384 : 576;
   const width = monitor ? Math.min(preferredWidth, Math.floor(monitor.size.width / monitor.scaleFactor) - 24) : preferredWidth;
   const height = monitor
-    ? Math.min(preferredHeight, Math.floor(monitor.size.height / monitor.scaleFactor) - 68)
+    ? Math.min(preferredHeight, Math.floor(monitor.size.height / monitor.scaleFactor) - offset - 18)
     : preferredHeight;
 
   return startWidget(name, {
     anchor: 'top_right',
     offsetX: '-12px',
-    offsetY: '50px',
+    offsetY: `${offset}px`,
     width: `${width}px`,
     height: `${height}px`,
     monitorSelection: index >= 0 ? { type: 'index', match: index } : { type: 'primary' },
@@ -83,7 +89,7 @@ export function usePanelToggle() {
     if (opening) return;
     opening = true;
     try {
-      await openActivityPanel(name);
+      await openActivityPanel(name, window.innerHeight + 6);
       open.add(name);
     } finally {
       opening = false;
