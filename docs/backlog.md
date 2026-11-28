@@ -111,6 +111,15 @@ with providers and actions around it.
 - **Minimized apps sometimes missing from results** · `bug` · S–M, needs a repro. First check which apps: apps that "minimize"
   to the tray (Signal, Discord and others can) hide their window instead, and GlazeWM drops hidden windows from its tree, so the
   launcher never sees them. If that's the cause, the fix is in the app result (Enter on the app usually brings its window back) rather than the window list.
+  A second cause was found on 2026-11-28 (next item); check whether the earlier reports followed a GlazeWM restart.
+- **Open app missing from results after GlazeWM died** · `done` 2026-11-28. ChatGPT was on the
+  taskbar but invisible and missing from the launcher: GlazeWM had died with it on a hidden workspace and left it cloaked.
+  The launcher now uncloaks such windows (`WindowRescue.cs`), tested by killing GlazeWM. The quick-restart path is untested.
+- **Show hidden windows (manual)** · `idea` · S. A command that finds shell-cloaked, unmanaged windows on the current
+  desktop without the remembered handles (for when the launcher wasn't running when GlazeWM died). Needs a filter for
+  windows Windows cloaks on purpose (suspended UWP frames, input panels).
+- **Why GlazeWM died on 2026-11-27 22:51** · `bug` · needs a repro. Two minutes after the second monitor went away
+  and the launcher merged workspaces 21, 22 and 29. No crash event and nothing in `errors.log`. Watch for it after display changes.
 
 ## GlazeWM
 

@@ -66,6 +66,11 @@ GlazeWM's focused monitor (wrong after clicking an empty desktop), and started P
   with GlazeWM running. The process-specific ignore rule is loaded and GlazeWM released the running
   game window. A fresh launch and the game's display still need verification.
 - The workspace keys depend on GlazeLauncher running (see its doc).
+- **GlazeWM 3.10.1 leaves windows hidden when it dies.** Hidden workspaces are shell-cloaked; its watcher re-shows the
+  windows after a crash or kill but doesn't uncloak them, and a new GlazeWM skips cloaked windows. GlazeLauncher now
+  uncloaks them (`docs/launcher.md`, "Rescuing windows after GlazeWM dies"). Without the launcher, close and reopen the app.
+  When GlazeWM was killed on 2026-11-28, the watcher itself also crashed during its cleanup (access violation in `combase.dll`).
+  GlazeWM died this way at 22:51 on 2026-11-27 for an unknown reason (no crash event, nothing in `errors.log`).
 
 ## Backups
 

@@ -161,11 +161,24 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
 | `UsageStore.cs` | Frecency (half-life 10 days), global and per workspace, saved to `usage.json` |
 | `MainWindow.xaml(.cs)` | UI (bar palette `#151b30` / `#b6acff`, DWM rounded corners), keys, placement, and the action list (levels, filter, confirm, shortcut lookup). `ActionRow` is one row of the list |
 | `HighlightedTextBlock.cs` | Renders matching characters as WPF runs and keeps Unicode text elements intact |
+| `WindowRescue.cs` | Uncloaks windows a dead GlazeWM left hidden (see below) |
 | `Native.cs`, `Infrastructure.cs` | Win32 interop; the shared background STA worker |
 
 - **Matching a window to an app.** An app's IDs are its AppsFolder ID (an AUMID or a path), its exe name, its name with spaces removed, and for packaged apps the family name plus a small alias table (`PackagedProcessAliases`: Terminal, Notepad, Calculator, Paint). A window's IDs are its process name, its process's packaged AUMID (`GetApplicationUserModelId`), and its window AUMID (`PKEY_AppUserModel_ID`). They match if the two sets share any ID. Squirrel apps (Discord) point at `Update.exe`, which is ignored; the name match covers them.
 - **Adding a provider.** Register it in `App.xaml.cs`. Search reads a cached snapshot and returns `ProviderResult` entries with a stable ID, match, optional hosting `WmWindow`, display fields, and an `Actions` function. That function is only called for the selected result (footer, Enter, a shortcut, the list), so a search allocates no actions; reuse `ActionKits` where it fits and `ActionKits.Single` for one action. The engine ranks results centrally and the UI renders the supplied icon, text and key hints. Providers with `IRefreshableSearchProvider` update their cache asynchronously when the launcher opens. The browser provider uses the hosting window for workspace ranking and `Actions.FocusWindow` before selecting the tab. The tab cache holds titles and runtime IDs in memory, and frecency stores one key per browser.
 - **Launching** uses ShellExecute on `shell:AppsFolder\<id>`, which works for Win32 and Store apps alike.
+- **Rescuing windows after GlazeWM dies** (`WindowRescue.cs`). GlazeWM hides the windows of workspaces that aren't
+  displayed by shell-cloaking them (`IApplicationView::SetCloak(1, 2)`). When GlazeWM dies, its watcher shows them and puts
+  them back on the taskbar but never uncloaks them, and a new GlazeWM skips cloaked windows. They end up on the taskbar
+  but invisible, in no workspace and missing from the launcher (seen 2026-11-28 with ChatGPT, Notepad, Signal, Steam and
+  Task Manager after GlazeWM died at 22:51 the night before). The launcher keeps the handles from GlazeWM's last snapshot
+  when the IPC connection drops. It uncloaks them (`SetCloak(1, 0)`, the same undocumented shell call GlazeWM uses):
+  - 3 s after the drop, if no `glazewm` process is running (a dropped connection to a live GlazeWM is left alone);
+  - when a GlazeWM connects whose tree doesn't include them; it then adopts them like newly opened windows.
+
+  It only touches windows that still exist, are cloaked by the shell (`DWMWA_CLOAKED` = 2), and are on the current virtual
+  desktop (`IVirtualDesktopManager`; windows on other desktops are shell-cloaked too). The handles are in memory only, so a
+  launcher restart while GlazeWM is down forgets them. The log line is `uncloaked N window(s) GlazeWM left hidden (…)`.
 - **Detached relaunch:** started without `--detached`, the exe relaunches itself through ShellExecute (no handle inheritance) and exits. That's the same protection the Zebar collector has against keeping a parent's sockets alive.
 - **Supervisor** (`supervisor/main.rs`, Rust, `GlazeSupervisor.exe`, about 180 KB and 1 MB private memory). GlazeWM starts
   it instead of the launcher. It relaunches itself without inherited handles, keeps one instance (mutex
@@ -202,7 +215,7 @@ connected, and releases them when it isn't, so Alt+digits stay free for other ap
   `ws:focus:N` and `ws:move:N` run the Alt+N and Alt+Shift+N actions (they use the current foreground window, so make
   sure the right window is in front). For crash-recovery tests: `debug:throw` raises an error on the UI thread, and `debug:crash` crashes a background thread
   (the launcher really ends; a replacement starts only after the first 60 s). `debug:hang` blocks the UI thread for 30 s,
-  to test the supervisor's hang detection.
+  to test the supervisor's hang detection. `debug:rescue:<hex handle>[,…]` runs the window rescue on those handles.
 - **Rendering is software-only** (`RenderMode.SoftwareOnly`), and concurrent GC is off. GPU rendering loaded the NVIDIA driver into the process: about 113 → 77 MB private memory after a search. Working set is about 170 MB, mostly shared WPF DLL pages.
 - **Without GlazeWM** the launcher still starts and searches apps (noticed 2026-11-27, not designed for). What works and what should happen in that mode is in the backlog.
 
@@ -251,6 +264,9 @@ screenshot tool can't target the popup (it has no taskbar or Start entry); use t
   merges where the target slot already has windows on a real display change (the "moved" path; only seen in the first test).
 - The settle watch can only fix windows GlazeWM manages; an app that moves itself more than 30 s after a display change
   needs Ctrl+Alt+R.
+- **The window rescue was checked end to end on the GlazeWM-exit path** (2026-11-28): `Stop-Process glazewm` with
+  Windows Terminal and Docker Desktop on a hidden workspace; both were uncloaked 3 s later and the next GlazeWM adopted them.
+  Not yet checked: the reconnect path (a new GlazeWM up within 3 s of the old one dying).
 
 **Testing tip:** a throwaway WinForms window (`[System.Windows.Forms.Application]::Run($form)` from a background PowerShell)
 is a safe target for window tests. To see a `snapshot`, have GlazeWM copy it out of the real `%LOCALAPPDATA%`
@@ -272,10 +288,22 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-supervisor-20261127-192822\`: before the supervisor
 - `.glzr\launcher\before-result-actions-20261127-194948\`: before result actions and the settings file
 - `.glzr\launcher\before-aliases-20261127-224525\`: before aliases
+- `.glzr\launcher\before-window-rescue-20261128-100413\`: before the window rescue
 
 ## Change log
 
 Newest first.
+
+### 2026-11-28
+- **Windows a dead GlazeWM left hidden come back.** Reported: ChatGPT was open and on the taskbar, but the launcher only
+  offered to launch it. Cause: GlazeWM died at 22:51 on 2026-11-27 (IPC dropped without a close, no crash event, nothing in
+  `errors.log`) while ChatGPT, Notepad, Signal, Steam and Task Manager were on hidden workspaces. GlazeWM's watcher doesn't
+  uncloak, and the GlazeWM started at 09:55 skipped the cloaked windows. Uncloaked those five by hand, and GlazeWM adopted
+  them. New `WindowRescue.cs` does this automatically (see How it works); `App.xaml.cs` creates it and adds the
+  `debug:rescue:` pipe command. The Settings app's frame window is also shell-cloaked and outside GlazeWM; it was left alone.
+  Tested end to end by killing GlazeWM: two hidden windows uncloaked after 3 s, adopted by the next GlazeWM (started
+  through the launcher's own search, since an agent's shell would start it inside the Claude app's package). GlazeWM's
+  watcher crashed during its cleanup in that test (access violation in `combase.dll`).
 
 ### 2026-11-27
 - **Added aliases.** Design agreed with the user first: exact and prefix matching only; apps, folders and commands; a tag

@@ -124,6 +124,7 @@ public partial class App : Application
             _usage, aliases);
 
         _workspaces = new WorkspaceManager(_glaze);
+        _ = new WindowRescue(_glaze, Dispatcher);
 
         _window = new MainWindow(_glaze, shellIndex, search, actions, icons);
         var hwnd = _window.Prepare();
@@ -327,6 +328,12 @@ public partial class App : Application
                 break;
             case "debug:crash":
                 new Thread(() => throw new InvalidOperationException("debug:crash test")) { IsBackground = true }.Start();
+                break;
+            // Runs the rescue of windows a dead GlazeWM left cloaked on the given hex handles (comma-separated).
+            case var r when r.StartsWith("debug:rescue:", StringComparison.Ordinal):
+                WindowRescue.Rescue([.. r[13..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(h => long.TryParse(h.Replace("0x", ""), System.Globalization.NumberStyles.HexNumber, null, out long v) ? v : 0)
+                    .Where(v => v != 0)], "debug command");
                 break;
             // Blocks the UI thread for 30 s, so the supervisor's hang detection can be tested.
             case "debug:hang":
