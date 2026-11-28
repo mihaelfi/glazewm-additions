@@ -1,12 +1,14 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor } from 'solid-js';
 import { render } from 'solid-js/web';
 import { useCloseActivityPanel } from './activity-panel';
+import { BarIcon } from './bar-icon';
 import { useClockTime } from './clock';
 import { PanelHeader } from './panel-header';
 import {
   clearTimer, elapsedPercent, isOverdue, readTimer, startTimer, timerChanged, timerLabel, TIMER_CHANNEL, type Timer,
 } from './timer';
 import './widget.css';
+import './activity-popup.css';
 import './clock.css';
 
 const locale = Intl.DateTimeFormat().resolvedOptions().locale;
@@ -44,7 +46,7 @@ function Calendar(props: { now: Accessor<number> }) {
   }
 
   return (
-    <div class="calendar-card">
+    <div class="calendar-card popup-frame activity-card">
       <div class="calendar-head">
         <h2 id="calendar-month" aria-live="polite">{monthFormat.format(month())}</h2>
         <div class="calendar-controls">
@@ -121,7 +123,7 @@ function TimerPanel(props: { now: Accessor<number> }) {
   const customSeconds = () => (Number(hours()) * 60 + Number(minutes())) * 60;
 
   return (
-    <div class="timer-card">
+    <div class="timer-card popup-frame activity-card">
       <Show when={timer() !== undefined} fallback={
         <Show when={!error()} fallback={<button class="clock-control" onClick={() => { setError(''); void refresh(); }}>Retry</button>}>
           <p class="clock-muted" role="status">Loading timer…</p>
@@ -129,7 +131,7 @@ function TimerPanel(props: { now: Accessor<number> }) {
       }>
         <Show when={timer()} fallback={
           <>
-            <h2>Quick timers</h2>
+            <h2>Quick Timers</h2>
             <div class="timer-presets">
               <For each={[5, 10, 15]}>{minutes => (
                 <button class="clock-control" disabled={busy()} onClick={() => void update(() => startTimer(minutes * 60))}>
@@ -141,7 +143,7 @@ function TimerPanel(props: { now: Accessor<number> }) {
               event.preventDefault();
               if (customSeconds() > 0) void update(() => startTimer(customSeconds()));
             }}>
-              <h2>Custom duration</h2>
+              <h2>Custom Duration</h2>
               <div class="timer-fields">
                 <label>Hours<input type="number" min="0" max="999" placeholder="0" value={hours()}
                   onInput={event => setHours(event.currentTarget.value)} /></label>
@@ -155,7 +157,7 @@ function TimerPanel(props: { now: Accessor<number> }) {
           const overdue = createMemo(() => isOverdue(active(), props.now()));
           return (
             <div class="timer-running" classList={{ 'timer-finished': overdue() }}>
-              <h2 role="status">{overdue() ? 'Timer finished' : 'Time remaining'}</h2>
+              <h2 role="status">{overdue() ? 'Timer Finished' : 'Time Remaining'}</h2>
               <strong>{timerLabel(active(), props.now())}</strong>
               <progress value={elapsedPercent(active(), props.now())} max="100" aria-label="Timer progress" />
               <p class="clock-muted">{overdue() ? 'Ended at' : 'Ends at'} {timeFormat.format(active().deadlineMs)} · {dateFormat.format(active().deadlineMs)}</p>
@@ -179,13 +181,13 @@ function ClockPanel() {
   const [tab, setTab] = createSignal<(typeof tabs)[number]>('Calendar');
 
   return (
-    <main class="panel clock-panel" aria-labelledby="clock-title">
-      <PanelHeader id="clock-title" title="Clock" onClose={close} />
-      <div class="clock-hero">
+    <main class="panel popup-frame activity-popup clock-panel" aria-labelledby="clock-title">
+      <PanelHeader id="clock-title" title="Clock" onClose={close} icon={<BarIcon name="clock" />} />
+      <div class="clock-hero popup-frame activity-card">
         <time dateTime={new Date(now()).toISOString()}>{timeFormat.format(now())}</time>
         <p>{dateFormat.format(now())}</p>
       </div>
-      <div class="clock-tabs" role="tablist" aria-label="Clock views" onKeyDown={event => {
+      <div class="clock-tabs popup-frame activity-card" role="tablist" aria-label="Clock views" onKeyDown={event => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
         const next = event.key === 'Home' || (event.key !== 'End' && tab() === 'Timer') ? 'Calendar' : 'Timer';
@@ -194,7 +196,10 @@ function ClockPanel() {
       }}>
         <For each={tabs}>{name => (
           <button class="clock-control" role="tab" id={`clock-tab-${name}`} aria-controls={`clock-view-${name}`}
-            aria-selected={tab() === name} tabIndex={tab() === name ? 0 : -1} onClick={() => setTab(name)}>{name}</button>
+            aria-selected={tab() === name} tabIndex={tab() === name ? 0 : -1} onClick={() => setTab(name)}>
+            <BarIcon name={name === 'Calendar' ? 'calendar' : 'timer'} />
+            {name}
+          </button>
         )}</For>
       </div>
       <section id="clock-view-Calendar" role="tabpanel" aria-labelledby="clock-tab-Calendar" hidden={tab() !== 'Calendar'}>

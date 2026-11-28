@@ -1,0 +1,131 @@
+.panel.activity-popup.gpu-panel {
+  --frame-line: #496343;
+  --frame-fill: #111a17;
+  --border: #374d37;
+  --muted: #b6cbb6;
+  --activity-accent: #b3e886;
+  --activity-card-face: #1a2720;
+  --activity-title-edge: linear-gradient(100deg, #a7dd76, #4a6745 38%, #5c754e);
+  --activity-title-face: linear-gradient(100deg, #233829, #17261d);
+  --activity-section-face: linear-gradient(90deg, #2b3e2c, #202f25);
+  --activity-section-hover: #354a35;
+  --activity-button-face: #23372a;
+  --activity-button-hover: #354b36;
+  --activity-chevron: #b1cbaa;
+}
+
+.gpu-adapter-name {
+  padding: 0 3px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.gpu-adapter-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 5px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.gpu-adapter-tabs button {
+  flex: 1 1 150px;
+  min-width: 112px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--activity-button-face);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.gpu-adapter-tabs button:hover { background: var(--activity-button-hover); }
+.gpu-adapter-tabs button[aria-pressed="true"] {
+  border-color: #81ab63;
+  color: #e8f5df;
+}
+
+.gpu-panel .gpu-usage { color: var(--activity-accent); font-size: 15px; }
+.gpu-usage-card .panel-section-body { padding: 8px 9px; }
+.gpu-capacity {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr) minmax(0, .85fr);
+  margin: 0 0 8px;
+  padding-block-end: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.gpu-capacity > div { padding-inline: 8px; }
+.gpu-capacity > div + div { border-inline-start: 1px solid var(--border); }
+.gpu-capacity dt { color: var(--muted); font-size: 11px; }
+.gpu-capacity dd { margin: 1px 0 0; font-size: 15px; font-weight: 650; }
+.gpu-capacity dd small { color: var(--muted); font-size: 11px; font-weight: 400; }
+.gpu-vram-meter {
+  display: block;
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: #374f3d;
+}
+.gpu-vram-meter::before {
+  display: block;
+  width: var(--share);
+  height: 100%;
+  border-radius: inherit;
+  background: #9bd66f;
+  content: "";
+}
+.gpu-usage-card .usage-graph { height: 88px; border-radius: 2px; background: #101d16; }
+
+.gpu-engine-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr));
+  gap: 5px;
+}
+.gpu-engine-tile {
+  --cut: 5px;
+  --frame-line: var(--border);
+  --frame-fill: #1d3026;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 3px 4px;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 0;
+  background: transparent;
+  color: #dee9db;
+  text-align: start;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.gpu-engine-tile:hover,
+.gpu-engine-tile[aria-pressed="true"] { --frame-fill: #263b2d; }
+.gpu-engine-tile[aria-pressed="true"] { --frame-line: #8fcf63; }
+.gpu-engine-tile:focus-visible { outline-color: var(--activity-accent); }
+.gpu-engine-tile span { overflow: hidden; text-overflow: ellipsis; }
+.gpu-engine-tile strong { color: var(--activity-accent); font-weight: 650; }
+.gpu-engine-tile .sparkline {
+  display: block;
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 29px;
+  background: #101d16;
+}
+
+.gpu-processes .process-table :is(th, td) { padding-block: 3px; }
+.gpu-processes .process-table tbody tr:last-child td { border-bottom: 0; }
+.gpu-processes .process-table tbody tr:hover { background: #293a2e; }
+.gpu-process-table th:nth-child(3) { width: 52px; }
+.gpu-process-table th:nth-child(4) { width: 120px; }
+.gpu-process-table td:nth-child(3) { color: var(--activity-accent); }
+.gpu-process-table .process-meter::before { background: #9bd66f; }
+
+@media (max-width: 440px) {
+  .gpu-capacity > div { padding-inline: 5px; }
+  .gpu-capacity dd { font-size: 13px; }
+  .gpu-process-table th:nth-child(2) { width: 48px; }
+  .gpu-process-table th:nth-child(3) { width: 44px; }
+  .gpu-process-table th:nth-child(4) { width: 88px; }
+  .gpu-process-table .process-meter { display: none; }
+}

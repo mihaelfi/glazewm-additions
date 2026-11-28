@@ -101,17 +101,35 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
   to hot red. Adjacent logical processors are grouped to fit the height. Each cell keeps the highest
   load in its group and time bucket. The GPU button is a green sparkline of the
   selected adapter's load plus %; its tooltip shows the GPU name and temperature. It is hidden if the collector reports no GPUs.
-- **CPU panel** (`src/panel.tsx`): total, busiest core, an all-core heatmap with a colour
-  key, a graph of the selected core over the history window with its peak, a clickable grid of logical processors,
-  and **Top processes · last N min** (N = the history setting): Process, PID, **Now**, **Avg** and **Peak**, top 8. It's
-  sorted by Avg by default; click a column header to re-sort. It refreshes every 2 s while open. The
-  point is that a process that spiked for 30 s and then stopped still ranks high on Avg and Peak.
-- **RAM panel** (`src/ram-panel.tsx`): usage %, a history graph, used/available/total
-  in GiB/MiB, and the top 10 processes by memory.
-- **GPU panel** (`src/gpu-panel.tsx`): adapter tabs (when there's more than one GPU), then load, dedicated memory (used / total with a meter), shared memory and temperature. Below that, a graph for the selected engine (Overall by default) with its peak, a clickable engine row, and the top 8 processes (GPU % and dedicated memory).
-- **History length:** widgets ask for just their window with `/history?…&limit=<seconds>` and `/cpu/processes?window=<seconds>`. When the
-  window grows, the feed refetches the whole window (`session = 0`). The heatmap merges long windows into
-  at most 120 columns, keeping each column's **peak**, so short spikes stay visible.
+- **CPU Activity** (`src/panel.tsx`, `src/cpu-panel.css`): a stepped header and three framed cards.
+  Overall CPU and the Heatmap share a frame. The heatmap shows one ungrouped row per logical
+  processor, with oldest samples at left. The Logical processors card shows one history tile
+  per processor and highlights the busiest. The history traces use the bar's blue-to-red palette
+  on a fixed 0–100% scale. Each tile shows current usage and its history peak in the tooltip.
+  Overall CPU, Heatmap, Logical processors, and Top processes collapse independently and
+  restore their state from the Zebar webview's local storage when reopened. The **Top processes**
+  table shows Process, PID, **Now**, **Avg**, and **Peak** for the top eight. It defaults to Avg,
+  sorts by column, and refreshes every 2 s while open.
+  Use this popup as the design reference for the remaining panels, including title case,
+  stepped headers, and chamfered frames that group related information.
+- **RAM Activity** (`src/ram-panel.tsx`, `src/ram-panel.css`): a teal stepped header and two
+  framed cards. **Memory Usage** groups Used, Available, and Total with current and peak usage
+  and a 0–100% history graph. **Top 10 Processes** shows the current working set for each process
+  and refreshes every 3 s while open. Both sections remember their collapse state.
+- **GPU Activity** (`src/gpu-panel.tsx`, `src/gpu-panel.css`): green stepped header, adapter
+  selection when there are multiple GPUs, and three framed cards with remembered collapse states.
+  **GPU Usage** groups dedicated memory and its meter, shared memory, temperature, and a 0–100%
+  history chart with the peak. **Engines** shows a mini-graph for each engine. Clicking one
+  displays its history in the larger chart, and clicking it again returns to overall load.
+  **Top Processes** shows the selected adapter's top eight processes by GPU activity, with
+  dedicated memory usage and a 3 s refresh while open.
+- CPU, RAM, GPU, Storage, Network, and Clock share the stepped header and chamfered card
+  styles in `src/activity-popup.css`. Each popup uses its own accent palette. The activity
+  popups share collapse controls in `src/panel-section.tsx`.
+- **History length:** widgets ask for just their window with `/history?…&limit=<seconds>` and
+  `/cpu/processes?window=<seconds>`. When the window grows, the feed refetches it (`session = 0`).
+  The bar heatmap and the popup matrix merge time buckets to fit their available width. Each
+  bucket keeps its **peak** so short spikes stay visible. The popup preserves each processor row.
 
 ## Storage card and popup (`src/drives.tsx`, `src/storage-panel.tsx`)
 
@@ -121,12 +139,13 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
   **Activity marks** (cyan read above pink write beside the ring, bright with activity), or
   **None** (capacity only, the default).
   The hover tooltip lists free space for each drive and explains the marks when shown. Clicking toggles the popup.
-- **Storage popup** (`storage-activity`, 576 × 470): a compact summary strip and a two-column grid
-  of all visible drives, with navy panels and chamfered corners. Each tile shows capacity, live
-  speeds, and its own cyan read and pink write history chart. The charts use the same history
-  window and throughput scale, shown once above the grid. One drive spans both columns and gets
-  a taller chart. Six drives fit at the default size. The grid scrolls for more drives or shorter
-  windows, and stacks in one column at narrow widths. **Clicking a tile opens that drive in File
+- **Storage Activity** (`storage-activity`, 576 × 470): ice-blue stepped header with
+  **Capacity** and **Drive Activity** cards that remember their collapse states. Capacity shows
+  Free, Total, and the fullest visible drive. Each drive tile shows capacity, live speeds, and
+  its own cyan read and pink write history chart. The Drive Activity heading shows the shared
+  history window and throughput scale. One drive spans both columns and gets a taller chart.
+  Six drives fit at the default size. The grid scrolls for more drives or shorter windows
+  and stacks in one column at narrow widths. **Clicking a tile opens that drive in File
   Explorer** and closes the popup.
 - **History of this design:** the first version (2026-11-27) put six loose `C | 947 GB` items on the bar.
   It looked out of place next to the framed cards, the thin bar read like a text cursor, and it was
@@ -154,15 +173,27 @@ Data comes from the collector; see [`zebar-collector.md`](zebar-collector.md) fo
   disconnected icon plus fixed-width download and upload rates in bits per second. The default physical
   interface sets the icon when known, with Ethernet taking
   precedence when the default route does not match an active physical adapter. The Wi-Fi SSID is in the tooltip.
-- The popup shows aggregate rates and one tile per active physical adapter. Each tile shows the local IP,
-  the Wi-Fi SSID when available, current rates and a history graph. Download is sky blue and upload is
-  amber. The popup shares its frame, chart rendering and history setting with Storage.
+- **Network Activity** (`network-activity`, 576 × 470): violet stepped header and two cards that
+  remember their collapse states. **Total Traffic** shows aggregate download and upload.
+  **Adapters** stacks full-width tiles with local IP, Wi-Fi SSID when available, history, and
+  live rates beside the graph. The heading shows the shared history window and adaptive scale.
+  A single adapter gets a taller graph. Two adapters fit at the default size. Download is sky
+  blue and upload is amber.
+- Each adapter has a **Copy IP** button for the displayed address and a Windows Settings shortcut.
+  Copy is unavailable when Zebar has no address for that adapter. The shortcut opens Wi-Fi or
+  Ethernet Settings, or Advanced Network Settings when more than one active adapter shares that
+  type. The Network widget's manifest allows Explorer to open only those three Settings URIs.
+  [Windows Settings URIs](https://learn.microsoft.com/en-us/windows/apps/develop/launch/launch-settings#network-and-internet)
 - The collector samples traffic and maintains the history. Zebar's existing `network` provider supplies
   the default interface, local IP addresses and the SSID. Network is enabled by default in Settings.
 
-## Clock, calendar and timer (`src/clock-panel.tsx`, `src/clock.ts`, `src/timer.ts`; collector side in `native/timer.rs`)
+## Clock, calendar and timer (`src/clock-panel.tsx`, `src/clock.css`, `src/clock.ts`, `src/timer.ts`; collector side in `native/timer.rs`)
 
-- The far-right clock button opens on the bar's monitor with Calendar selected. The popup shows local time with seconds, a locale-aware month grid with Today and month navigation, a Timer tab, and a link to shared Settings.
+- The far-right clock button opens the 384 × 492 Clock popup on the bar's monitor with Calendar selected.
+  A slate-blue stepped header has the shared Settings and close buttons. Below it, a framed
+  card centers the local time with seconds above the full date. Calendar and Timer use
+  icon tabs and chamfered cards. Calendar shows six weeks with Today highlighted and
+  month controls above the grid.
 - The default ISO date is centered above the time on the bar. Timer progress sits under the separate countdown.
 - Timer offers immediate 5, 10 and 15 minute presets and a custom duration in hours/minutes (up to 999 h 59 min). There is one active timer across all bars. The digits count down while the progress line fills from left to right as time elapses. Cancel from the Timer tab.
 - At expiry, the clock briefly pulses when motion is enabled and the elapsed line turns amber. The collector plays a Windows chime about every four seconds until dismissal. Turn off **Repeat timer chime until dismissed** in shared Settings under **Clock** for a single chime. Click a clock button or Dismiss timer in the Timer tab to silence and clear it.
@@ -229,19 +260,45 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 ## Known issues and unverified
 
 - Changing bar height does not change GlazeWM's top gap. Adjust the gap separately for a different tiling margin.
+- Larger CPU counts scroll within the heatmap and processor grid. On short displays, CPU Activity,
+  RAM Activity, and GPU Activity can scroll as a whole to reach the bottom of the process table.
+- Storage and Network Activity keep their headers visible when their drive or adapter lists scroll.
 - On narrow screens, Network scrolls with the other configurable cards.
 - Input language falls back to its code in either flag mode when the locale has no matching bundled flag.
 - Zebar provides the SSID for the default Wi-Fi interface. Other active Wi-Fi adapters still show
   traffic history and any local addresses the provider supplies.
+- Windows Settings documents network links by connection type. Where several adapters share a
+  type, choose the specific adapter in Advanced Network Settings.
 - Browser checks confirmed six drive rings and one Live rates readout fit at 1280 × 34 px in the test layout.
   All six Live rates readouts fit at 1920 × 38 px. Check how many simultaneous readouts fit on narrow
   native bars with several workspaces.
-- Check native clock popup placement and dismissal on both monitors, and listen for the chime on the desktop.
+- Clock shows the full month grid at its default size and scrolls on shorter viewports in the
+  browser check. Native popup placement and dismissal on both monitors and the desktop
+  chime still need verification.
 - **Not yet portable:** the installed `zpack.json` uses the absolute collector path `C:\Users\mihae\...`. Zebar matches the program as an exact string, so a relative path can't work; the planned install script writes the real path (see the backlog's install script item).
 - The panel toggle has only been tested with the bar on the primary monitor. The other monitor's bar should behave the same way (each bar tracks its own panels), but that hasn't been checked.
 
 ## Backups
 
+- `.glzr\zebar\cpu-activity\dist.before-clock-popup-20261128-173118` holds the installed
+  web assets before the Clock redesign.
+- `.glzr\zebar\cpu-activity\dist.before-network-actions-20261128-172430` and
+  `zpack.json.before-network-actions-20261128-172430` hold the installed assets and manifest
+  before the adapter actions.
+- `.glzr\zebar\cpu-activity\dist.before-network-popup-20261128-171824` holds the installed
+  web assets before the Network Activity redesign.
+- `.glzr\zebar\cpu-activity\dist.before-storage-popup-20261128-171241` holds the installed
+  web assets before the Storage Activity redesign.
+- `.glzr\zebar\cpu-activity\dist.before-gpu-popup-20261128-170742` holds the installed
+  web assets before the GPU Activity redesign.
+- `.glzr\zebar\cpu-activity\dist.before-ram-popup-20261128-165951` holds the installed
+  web assets before the RAM Activity redesign.
+- `.glzr\zebar\cpu-activity\dist.before-cpu-title-20261128-143103` holds the installed
+  web assets before the CPU Activity title change.
+- `.glzr\zebar\cpu-activity\dist.before-cpu-sections-20261128-142555` holds the installed
+  web assets before the full CPU heatmap, collapsible sections, and updated frames.
+- `.glzr\zebar\cpu-activity\dist.before-cpu-popup-20261128-141311` holds the installed web
+  assets before adding the CPU history grid.
 - `.glzr\zebar\cpu-activity\dist.before-language-display-20261128-134437` and
   `zebar-cpu-collector.exe.before-language-display-20261128-134437` hold the installed pack before
   adding the Input language choices.
@@ -280,6 +337,54 @@ Don't mistake this for a widget bug. The native desktop tool does not expose the
 Newest first. Covers the whole pack, front end and collector.
 
 ### 2026-11-28
+- **Redesigned Clock** in `src/clock-panel.tsx`, `src/clock.css`, and `src/bar-icon.tsx`.
+  Added the stepped header, centered time and date, icon tabs, a framed calendar with a
+  clearer Today marker, and a matching timer progress bar. Browser checks covered calendar
+  layout and navigation, keyboard tab switching, timer progress and expiry dismissal, and
+  the bar and Settings links. Deployed with the existing collector session.
+- **Added Network adapter actions** in `src/network-panel.tsx`, `src/network.css`, and
+  `src/bar-icon.tsx`. Copy uses the displayed local IP and the Windows Settings shortcut
+  routes by adapter type. Updated the source and installed manifests with the three allowed
+  Settings URIs. Browser checks covered IPv4, IPv6, no IP, clipboard denial, and routing.
+  Deployed the assets and manifest with the existing collector session.
+- **Redesigned Network Activity** in `network.html`, `src/network-panel.tsx`, and `src/network.css`.
+  Added a violet stepped title, remembered Total Traffic and Adapters sections, and stacked
+  adapter charts with rates to the right. Updated the icon and launch label. Shared the
+  scrollable section styling with Storage in `src/activity-popup.css`. Verified the adaptive
+  scale, collapse persistence, adapter states, and Storage regression checks. Deployed the web
+  assets with the existing collector session.
+- **Redesigned Storage Activity** in `storage.html`, `src/storage-panel.tsx`, and
+  `src/storage.css`, with an ice-blue stepped title and remembered Capacity and Drive Activity
+  sections. Updated the launcher label in `src/bar.tsx`. Kept the existing default size and
+  verified one, six, and eight drives, narrow scrolling, capacity colors, the shared graph
+  scale, and opening a drive in Explorer. Deployed the web assets with the same collector session.
+- **Redesigned GPU Activity** in `gpu.html`, `src/gpu-panel.tsx`, and `src/gpu-panel.css`.
+  Reused the shared stepped header and collapse controls, with a green palette and
+  individual engine histories. Updated the GPU launch label and removed obsolete overview
+  and processor styles from `src/widget.css`. Verified GPU adapter and engine selection,
+  collapse persistence, narrow layout, and CPU and RAM regression checks. Deployed the
+  web assets with the existing collector session.
+- **Redesigned RAM Activity** in `ram.html`, `src/ram-panel.tsx`, and `src/ram-panel.css`.
+  Grouped capacity and the teal history graph under Memory Usage, added the window peak,
+  and gave the working-set table a separate collapsible frame. Extracted the shared stepped
+  header styles and collapse control into `src/activity-popup.css` and `src/panel-section.tsx`.
+  Updated the RAM launch label and chart grid color. Verified RAM and CPU in the browser and
+  deployed the web assets with the same collector session.
+- **Capitalized CPU Activity** in `panel.html`, `src/panel.tsx`, and the launch label in
+  `src/bar.tsx`. Verified the title in the browser and deployed the web assets. Recorded
+  CPU Activity as the visual reference for the next popup designs.
+- **Added a full CPU heatmap and collapsible sections.** Updated `src/heatmap.tsx`,
+  `src/panel.tsx`, and `src/cpu-panel.css`. The mesh has one row per logical processor. The
+  four headings independently save their collapse states. Overall CPU and Heatmap share a
+  frame, and the other cards and stepped title have their own borders. Browser checks
+  covered 24 heatmap rows and tiles in the default window, 64-processor scrolling, and
+  state restoration across reopen. Deployed the web assets with the existing collector session.
+- **Added the CPU popup history grid and thermal traces.** Updated `src/panel.tsx`,
+  `src/panel-header.tsx`, `src/cpu-panel.css`, and the shared canvas code in
+  `src/history-graph.tsx`, `src/heatmap.tsx`, and `src/cpu-thermal.ts`. The popup has a slim
+  total graph, a peak heat strip, individual processor graphs, and the sortable process table.
+  Browser checks covered trace colors, 1, 12, and 64 processors, 15-minute history, and a short
+  viewport. Deployed the web assets with the existing collector session.
 - **Added Input language display choices** to the Bar layout settings in `src/settings-panel.tsx`,
   `src/settings.ts` and `src/widget.css`. Updated the card in `src/bar.tsx` and `src/bar.css`,
   with persistence in `native/settings.rs`. Verified all three selections across two browser

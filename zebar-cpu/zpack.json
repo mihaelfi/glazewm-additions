@@ -137,7 +137,11 @@
       "resizable": false,
       "transparent": true,
       "includeFiles": ["dist/**/*"],
-      "privileges": { "shellCommands": [] },
+      "privileges": {
+        "shellCommands": [
+          { "program": "C:\\Windows\\explorer.exe", "argsRegex": "^ms-settings:network-(wifi|ethernet|advancedsettings)$" }
+        ]
+      },
       "presets": [
         {
           "name": "default",

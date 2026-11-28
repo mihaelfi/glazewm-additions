@@ -1,0 +1,42 @@
+.panel.activity-popup.ram-panel {
+  --frame-line: #316163;
+  --frame-fill: #0d1a21;
+  --border: #28484e;
+  --muted: #adc8ce;
+  --activity-accent: #86e7d8;
+  --activity-card-face: #132429;
+  --activity-title-edge: linear-gradient(100deg, #67d9c8, #325e64 38%, #477777);
+  --activity-title-face: linear-gradient(100deg, #183436, #10232a);
+  --activity-section-face: linear-gradient(90deg, #1b373b, #162a31);
+  --activity-section-hover: #23464a;
+  --activity-button-face: #173032;
+  --activity-button-hover: #234449;
+  --activity-chevron: #a2d1cc;
+}
+
+.ram-panel .ram-usage { color: var(--activity-accent); font-size: 15px; }
+.ram-memory .panel-section-body { padding: 8px 9px; }
+.ram-capacity {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 0 8px;
+  padding-block-end: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.ram-capacity > div { padding-inline: 8px; }
+.ram-capacity > div + div { border-inline-start: 1px solid var(--border); }
+.ram-capacity dt { color: var(--muted); font-size: 11px; }
+.ram-capacity dd { margin: 1px 0 0; font-size: 16px; font-weight: 650; }
+.ram-capacity > :first-child dd { color: var(--activity-accent); }
+.ram-memory .usage-graph { height: 86px; border-radius: 2px; background: #0b1b21; }
+.ram-processes .process-table :is(th, td) { padding-block: 3px; }
+.ram-processes .process-table tbody tr:last-child td { border-bottom: 0; }
+.ram-processes .process-table tbody tr:hover { background: #1c343a; }
+
+@media (max-width: 440px) {
+  .ram-capacity > div { padding-inline: 5px; }
+  .ram-capacity dd { font-size: 13px; }
+  .ram-processes .process-table th:nth-child(2) { width: 48px; }
+  .ram-processes .process-table th:nth-child(3) { width: 102px; }
+  .ram-processes .process-meter { display: none; }
+}

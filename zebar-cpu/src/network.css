@@ -1,49 +1,89 @@
+.panel.activity-popup.network-panel {
+  --frame-line: #504877;
+  --frame-fill: #121526;
+  --border: #393958;
+  --muted: #bcbad7;
+  --activity-accent: #c8b6ff;
+  --activity-card-face: #1b2034;
+  --activity-title-edge: linear-gradient(100deg, #b69af7, #504973 38%, #61567f);
+  --activity-title-face: linear-gradient(100deg, #292344, #1b2035);
+  --activity-section-face: linear-gradient(90deg, #302847, #22273d);
+  --activity-section-hover: #3b3256;
+  --activity-button-face: #2a2845;
+  --activity-button-hover: #393252;
+  --activity-chevron: #c4b4e4;
+  --throughput-grid: #373e5b;
+}
+
 .network-summary {
   display: grid;
-  flex-shrink: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 8px 4px;
+  margin: 0;
+  padding-block: 3px;
+  line-height: 1.2;
 }
-.network-summary > div {
-  display: grid;
-  gap: 2px;
-  justify-items: center;
-  font-size: 11px;
-}
+.network-summary > div { padding-inline: 10px; }
 .network-summary > div + div { border-inline-start: 1px solid var(--border); }
-.network-summary strong { color: #e8eafa; font-size: 17px; }
+.network-summary dt { font-size: 11px; }
+.network-summary dd { margin: 2px 0 0; color: #e8eafa; font-size: 17px; font-weight: 650; }
 
 .network-adapters {
   display: grid;
   flex: 1;
   min-height: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
-  gap: 7px 8px;
+  gap: 7px;
   overflow-y: auto;
   overflow-x: hidden;
   margin: 0;
   padding: 0;
   list-style: none;
   scrollbar-width: thin;
-  scrollbar-color: #55668f transparent;
+  scrollbar-color: #635a84 transparent;
 }
+.network-adapters:focus-visible { outline: 1px solid var(--activity-accent); outline-offset: -1px; }
 .network-adapter {
+  --frame-line: var(--border);
+  --frame-fill: #20273d;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 3px;
+  padding: 7px 9px;
 }
-.network-adapter:only-child { grid-column: 1 / -1; }
 .network-adapter:only-child .network-history-graph { height: 140px; }
 .network-adapter-header { display: flex; align-items: center; gap: 7px; }
-.network-adapter-header h2 {
+.network-adapter-header .network-icon { color: var(--activity-accent); }
+.network-adapter-header h3 {
   overflow: hidden;
+  margin: 0;
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 13px;
 }
+.network-adapter-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: auto;
+}
+.network-action-status { color: var(--muted); font-size: 10px; }
+.network-adapter-action {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--activity-button-face);
+  color: var(--activity-accent);
+}
+.network-adapter-action:hover:not(:disabled) { background: var(--activity-button-hover); }
+.network-adapter-action:disabled { opacity: .45; cursor: default; }
+.network-adapter-action .bar-icon { width: 13px; height: 13px; }
 .network-adapter-details {
   display: flex;
   gap: 10px;
@@ -53,17 +93,33 @@
 .network-adapter-details > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .network-ip { flex-shrink: 0; max-width: 100%; }
 .network-adapter-details:has(> span + span) .network-ip { max-width: 58%; }
-.network-history-graph { display: block; width: 100%; height: 66px; background: #141d33; }
+.network-adapter-telemetry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 8px;
+  margin-block-start: 3px;
+}
+.network-history-graph { display: block; width: 100%; height: 64px; background: #141a2b; }
 .network-adapter-rates {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
+  align-content: center;
+  gap: 6px;
+  margin: 0;
+  padding-inline-start: 8px;
+  border-inline-start: 1px solid var(--border);
   font-size: 12px;
-  white-space: nowrap;
 }
-.network-adapter-rates > span + span { padding-inline-start: 8px; border-inline-start: 1px solid var(--border); }
-.network-adapter-rates strong { margin-inline-start: 3px; color: #e8eafa; font-weight: 600; }
+.network-adapter-rates > div { display: flex; justify-content: space-between; gap: 3px; white-space: nowrap; }
+.network-adapter-rates dd { margin: 0; color: #e8eafa; font-weight: 600; }
+.network-rate-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
 
-@media (max-width: 440px) {
-  .network-adapters { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 370px) {
+  .network-adapter-telemetry { grid-template-columns: minmax(0, 1fr) 89px; gap: 5px; }
+  .network-adapter-rates { padding-inline-start: 5px; font-size: 11px; }
 }

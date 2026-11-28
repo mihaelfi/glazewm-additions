@@ -1,19 +1,33 @@
 
+.panel.activity-popup.storage-panel {
+  --frame-line: #365c76;
+  --frame-fill: #0d1724;
+  --border: #294358;
+  --muted: #adc1d4;
+  --activity-accent: #89d4ff;
+  --activity-card-face: #132435;
+  --activity-title-edge: linear-gradient(100deg, #75cfff, #385c77 38%, #436780);
+  --activity-title-face: linear-gradient(100deg, #173149, #112338);
+  --activity-section-face: linear-gradient(90deg, #1c354c, #182a3d);
+  --activity-section-hover: #24415a;
+  --activity-button-face: #162d44;
+  --activity-button-hover: #25415c;
+  --throughput-grid: #2b435c;
+}
+
 .storage-overview {
   display: grid;
-  flex-shrink: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: center;
-  padding: 6px 4px;
-  color: var(--muted);
-  font-size: 11px;
-  text-align: center;
+  margin: 0;
+  line-height: 1.15;
 }
+.storage-overview > div { padding-inline: 8px; }
 .storage-overview > div + div { border-inline-start: 1px solid var(--border); }
-.storage-overview strong { color: #e8eafa; font-size: 13px; }
-.storage-overview strong.warn { color: #f5c983; }
-.storage-overview strong.full { color: #ff9b9b; }
-
+.storage-overview dt { color: var(--muted); font-size: 11px; }
+.storage-overview dd { margin: 1px 0 0; font-size: 14px; font-weight: 650; }
+.storage-overview > :first-child dd { color: var(--activity-accent); }
+.storage-overview dd.warn { color: #f5c983; }
+.storage-overview dd.full { color: #ff9b9b; }
 
 .drive-list {
   display: grid;
@@ -21,48 +35,54 @@
   min-height: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
-  gap: 7px 8px;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: #55668f transparent;
+  scrollbar-color: #466780 transparent;
 }
+.drive-list:focus-visible { outline: 1px solid var(--activity-accent); outline-offset: -1px; }
 .drive-list > li { min-width: 0; }
 .drive-list > li:only-child { grid-column: 1 / -1; }
 .drive-list > li:only-child .drive-history-graph { height: 135px; }
 
 .drive-row {
+  --frame-line: var(--border);
+  --frame-fill: #16293e;
+  --cut: 5px;
   display: grid;
   width: 100%;
   grid-template-columns: minmax(0, 1fr);
-  gap: 3px;
-  padding: 5px 9px;
+  gap: 2px;
+  padding: 4px 7px;
   border: 0;
   background: transparent;
   text-align: start;
 }
 .drive-row:is(:hover, :focus-visible) {
-  --frame-line: #8b86ce;
-  --frame-fill: #242e4d;
+  --frame-line: #6498bb;
+  --frame-fill: #1d344a;
 }
+.drive-row:focus-visible { outline-color: var(--activity-accent); }
 .drive-tile-header {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: baseline;
   align-content: start;
   gap: 1px 6px;
+  line-height: 1.18;
 }
 .drive-letter {
   display: grid;
   grid-row: span 2;
   align-self: stretch;
   place-items: center;
-  background: #2b3557;
-  border-radius: 4px;
-  color: #dfe4ff;
+  background: #24425d;
+  border-radius: 3px;
+  color: #e0f1ff;
   font-size: 14px;
 }
 .drive-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; }
@@ -71,11 +91,13 @@
 .drive-free strong { color: #dde4fa; }
 .drive-used, .drive-filesystem { text-align: end; }
 .drive-row.warn .drive-letter { background: #493819; color: #f5c983; }
+.drive-row.warn .drive-used { color: #f5c983; }
 .drive-row.full .drive-letter { background: #4d2128; color: #ffb3b3; }
 .drive-row.full :is(.drive-free strong, .drive-used) { color: #ff9b9b; }
-.drive-row-meter { height: 4px; background: #3c496a; }
+.drive-row-meter { height: 4px; background: #3e5871; }
 .drive-row-meter::before { inset: 0 auto 0 0; width: var(--used); }
-.drive-history-graph { display: block; width: 100%; height: 38px; background: #141d33; }
+.drive-row.ok .drive-row-meter::before { background: var(--activity-accent); }
+.drive-history-graph { display: block; width: 100%; height: 28px; background: #0c1928; }
 .drive-row-activity {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -83,6 +105,7 @@
   gap: 4px;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.2;
   white-space: nowrap;
 }
 .drive-row-activity > span + span { padding-inline-start: 8px; border-inline-start: 1px solid var(--border); }

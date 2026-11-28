@@ -1,9 +1,27 @@
-.clock-panel { gap: 11px; background: linear-gradient(155deg, #202748, #151b30 55%); }
-.clock-panel .panel-header h1 { font-size: 15px; color: #d8ddf4; }
-.clock-hero { padding: 0 6px 4px; }
-.clock-hero time { display: block; color: #f7f4ff; font-size: 35px; line-height: 1.15; font-weight: 650; }
-.clock-hero p { margin-top: 4px; color: #c3cbe6; font-size: 13px; }
-.clock-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: #121a30; }
+.panel.popup-frame.clock-panel {
+  --frame-line: #465c78;
+  --frame-fill: #101a28;
+  --border: #344961;
+  --muted: #aec0d7;
+  --activity-accent: #b8d9fa;
+  --activity-card-face: #172638;
+  --activity-title-edge: linear-gradient(100deg, #a3bfdc, #415873 38%, #5a6d89);
+  --activity-title-face: linear-gradient(100deg, #1b3047, #172437);
+  --activity-button-face: #1d3048;
+  --activity-button-hover: #283e59;
+}
+.clock-panel > [role='tabpanel'] { flex: none; }
+.clock-hero { padding: 7px 9px 9px; text-align: center; }
+.clock-hero time {
+  display: block;
+  color: #f2f7ff;
+  font-size: clamp(25px, 9vw, 37px);
+  line-height: 1.15;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.clock-hero p { margin-top: 3px; color: var(--muted); font-size: 13px; }
+.clock-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; }
 .clock-control {
   min-height: 30px;
   padding: 4px 10px;
@@ -15,22 +33,60 @@
 }
 .clock-control:hover { border-color: #7c73b4; background: #35365d; }
 .clock-control:disabled, .clock-control[aria-disabled='true'] { opacity: .55; cursor: default; }
-.clock-tabs button { border-color: transparent; background: transparent; color: var(--muted); }
-.clock-tabs button[aria-selected='true'] { border-color: #625994; background: #38315c; color: #f0eaff; }
 .clock-primary { border-color: #7768b8; background: #4a3e7f; }
-.calendar-card, .timer-card { padding: 11px 10px 8px; border: 1px solid var(--border); border-radius: 10px; background: #161e36; }
-.calendar-head { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 0 3px 8px; }
+.clock-panel .clock-control {
+  border-color: var(--border);
+  border-radius: 4px;
+  background: var(--activity-button-face);
+  color: #e5effd;
+}
+.clock-panel .clock-control:hover:not(:disabled):not([aria-disabled='true']) {
+  border-color: #6888aa;
+  background: var(--activity-button-hover);
+}
+.clock-panel .clock-control:focus-visible { outline-color: var(--activity-accent); }
+.clock-panel .clock-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+.clock-panel .clock-tabs button[aria-selected='true'], .clock-panel .clock-primary {
+  border-color: #638eb3;
+  background: #28486a;
+  color: #f2f7ff;
+}
+.clock-tabs .bar-icon { flex: none; width: 14px; height: 14px; }
+.calendar-card { padding: 8px 10px 7px; }
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  padding: 0 2px 6px;
+  border-bottom: 1px solid var(--border);
+}
 .calendar-head h2, .timer-card h2 { font-size: 14px; font-weight: 650; }
-.calendar-controls { display: flex; gap: 4px; }
+.calendar-controls { display: flex; flex: none; gap: 4px; }
+.calendar-controls .clock-control { min-height: 26px; }
 .calendar-arrow { min-width: 26px; padding: 0 5px 3px; font-size: 21px; line-height: 1; }
 .calendar-grid { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: center; }
-.calendar-grid th { height: 27px; color: var(--muted); font-size: 11px; font-weight: 550; }
-.calendar-grid td { height: 34px; padding: 0; font-size: 13px; }
-.calendar-grid .other-month { color: #8792b2; }
-.calendar-grid td time { display: inline-grid; width: 30px; height: 30px; place-items: center; }
-.calendar-grid time[aria-current='date'] { border-radius: 10px; background: #b6acff; color: #201844; font-weight: 750; }
+.calendar-grid th { height: 24px; color: var(--muted); font-size: 11px; font-weight: 550; }
+.calendar-grid td { height: 32px; padding: 0; font-size: 13px; }
+.calendar-grid .other-month { color: #899cb4; }
+.calendar-grid td time { display: inline-grid; width: 28px; max-width: 100%; height: 28px; place-items: center; }
+.calendar-grid time[aria-current='date'] {
+  border: 1px solid #7bb5e1;
+  border-radius: 4px;
+  background: #284e71;
+  color: #eff8ff;
+  font-weight: 750;
+}
 
-.timer-card { display: grid; gap: 10px; padding: 13px; }
+.timer-card { display: grid; gap: 10px; padding: 10px 11px; }
 .timer-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .timer-presets button { min-height: 40px; }
 .timer-form { display: grid; gap: 8px; padding-top: 11px; border-top: 1px solid var(--border); }
@@ -48,10 +104,19 @@
   font: inherit;
 }
 .timer-fields .clock-primary, .clock-format-custom .clock-primary { min-height: 32px; }
+.timer-fields input { border-color: var(--border); border-radius: 4px; background: #101c2b; }
 .timer-running { display: grid; justify-items: start; gap: 9px; }
-.timer-running strong { color: #d7ccff; font-size: 37px; font-weight: 650; }
+.timer-running strong {
+  color: var(--activity-accent);
+  font-size: clamp(27px, 10vw, 37px);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
 .timer-running.timer-finished strong { color: #ffc1ac; }
-.timer-running progress { width: 100%; height: 7px; accent-color: var(--accent); direction: ltr; }
+.timer-running progress { width: 100%; height: 6px; appearance: none; direction: ltr; }
+.timer-running progress::-webkit-progress-bar { border-radius: 2px; background: #304560; }
+.timer-running progress::-webkit-progress-value { border-radius: 2px; background: var(--activity-accent); }
+.timer-finished progress::-webkit-progress-value { background: #ffc1ac; }
 .clock-muted { color: var(--muted); font-size: 12px; }
 .clock-error, .settings-section .clock-error { color: #ffb9ab; font-size: 12px; }
 

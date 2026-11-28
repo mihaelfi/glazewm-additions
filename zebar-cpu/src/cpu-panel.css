@@ -1,0 +1,96 @@
+.cpu-processor-tile {
+  --frame-line: var(--border);
+  --frame-fill: var(--activity-card-face);
+}
+.cpu-processor-count { color: var(--muted); font-size: 11px; font-weight: 400; }
+
+.cpu-overall-load {
+  color: var(--activity-accent);
+  font-size: 15px;
+}
+.cpu-overall-plot .usage-graph {
+  height: 46px;
+  border-radius: 2px;
+  background: #0c1723;
+}
+.cpu-heatmap-section { border-top: 1px solid var(--border); }
+.cpu-heatmap-scroll {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  max-height: clamp(64px, 14dvh, 132px);
+  overflow: auto;
+  scrollbar-color: #3d5870 transparent;
+  scrollbar-width: thin;
+}
+.cpu-heatmap-axis { position: relative; color: var(--muted); }
+.cpu-heatmap-axis span { position: absolute; font-size: 9px; line-height: 10px; white-space: nowrap; }
+.cpu-heatmap { display: block; width: 100%; background: #0c1723; }
+
+.cpu-processor-section {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 88px;
+}
+.cpu-processor-section.collapsed { flex: none; min-height: 0; }
+.cpu-processor-section .panel-section-heading { flex: none; }
+.cpu-processor-section .panel-section-body { display: flex; flex-direction: column; }
+.cpu-processor-section .panel-section-body[hidden] { display: none; }
+.cpu-processor-grid {
+  --tile-width: 122px;
+  --tile-plot-height: 42px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--tile-width)), 1fr));
+  align-content: start;
+  gap: 5px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  scrollbar-color: #3d5870 transparent;
+  scrollbar-width: thin;
+}
+.cpu-processor-grid.dense { --tile-width: 82px; --tile-plot-height: 24px; }
+:is(.cpu-processor-grid, .cpu-heatmap-scroll):focus-visible { outline: 1px solid var(--activity-accent); outline-offset: -1px; }
+.cpu-processor-tile {
+  --cut: 5px;
+  min-width: 0;
+  padding: 5px 6px;
+}
+.cpu-processor-tile:only-child { grid-column: 1 / -1; }
+.cpu-processor-grid.dense .cpu-processor-tile { padding-block: 4px; }
+.cpu-processor-grid .cpu-processor-tile.busiest { --frame-line: #629dc3; --frame-fill: #18314a; }
+.cpu-processor-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px;
+  color: #cbdbe9;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.cpu-processor-label span { overflow: hidden; text-overflow: ellipsis; }
+.cpu-processor-label strong { color: #eef6ff; font-weight: 650; }
+.cpu-processor-tile .sparkline {
+  display: block;
+  width: 100%;
+  height: var(--tile-plot-height);
+  margin-top: 3px;
+  background: #0c1723;
+}
+.cpu-processor-grid.dense .sparkline { margin-top: 2px; }
+
+.cpu-processes .process-table th,
+.cpu-processes .process-table td { padding-block: 2px; }
+.cpu-processes .process-table tbody tr:last-child td { border-bottom: 0; }
+.cpu-processes .cpu-process-table td.sorted, .cpu-processes .sort-button.active { color: var(--activity-accent); }
+.cpu-processes .process-meter::before { background: #6eb9ee; }
+
+@media (max-width: 440px) {
+  .cpu-processor-grid { --tile-width: 103px; }
+  .cpu-processor-grid.dense { --tile-width: 84px; }
+  .cpu-processes .cpu-process-table th:nth-child(2) { width: 48px; }
+  .cpu-processes .cpu-process-table th:nth-child(n+3) { width: 49px; }
+  .cpu-processes .cpu-process-table .process-meter { display: none; }
+}

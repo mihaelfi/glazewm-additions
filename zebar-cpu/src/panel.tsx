@@ -1,12 +1,16 @@
 import { createMemo, createSignal, For, Index, onCleanup, onMount, Show } from 'solid-js';
 import { render } from 'solid-js/web';
 import { useCloseActivityPanel } from './activity-panel';
+import { BarIcon } from './bar-icon';
 import { PanelHeader } from './panel-header';
+import { PanelSection } from './panel-section';
 import { formatWindow, useSettings } from './settings';
-import { Heatmap } from './heatmap';
+import { CPU_HEATMAP_ROW_HEIGHT, ThermalHeatmap } from './heatmap';
 import { HistoryGraph } from './history-graph';
 import { requestMetrics, useMetricsFeed } from './metrics-feed';
 import './widget.css';
+import './activity-popup.css';
+import './cpu-panel.css';
 
 const processorLabel = (index: number) => `CPU ${String(index).padStart(2, '0')}`;
 
@@ -27,18 +31,20 @@ const sortColumns: { key: SortKey; label: string; title: string }[] = [
 ];
 const PROCESS_ROWS = 8;
 const formatShare = (value: number) => value >= 10 ? `${Math.round(value)}%` : `${value.toFixed(1)}%`;
-
+const usageLabel = (value: number | undefined) => value === undefined ? '—' : `${value}%`;
 
 function Panel() {
   const close = useCloseActivityPanel();
   const { settings } = useSettings();
   const historySeconds = () => settings().historyMinutes * 60;
   const { samples, status } = useMetricsFeed(false, historySeconds);
-  const [selected, setSelected] = createSignal(0);
   const latest = () => samples().at(-1);
-  const visibleSamples = () => status() === 'live' ? samples() : [];
-  const history = createMemo(() => visibleSamples().map(sample => sample.usage[selected()]));
-  const peak = createMemo(() => Math.max(0, ...history().map(value => value ?? 0)));
+  const visibleSamples = createMemo(() => status() === 'live' ? samples() : []);
+  const totalHistory = createMemo(() => visibleSamples().map(sample => sample.total));
+  const usage = () => latest()?.usage ?? [];
+  const heatmapLabels = createMemo(() =>
+    Array.from({ length: Math.ceil(usage().length / 8) }, (_, index) => index * 8),
+  );
   const [processes, setProcesses] = createSignal<CpuProcess[]>([]);
   const [historyWindow, setHistoryWindow] = createSignal(0);
   const [processStatus, setProcessStatus] = createSignal<'loading' | 'live' | 'unavailable'>('loading');
@@ -77,66 +83,91 @@ function Panel() {
   });
 
   const busiest = createMemo(() => {
-    const usage = latest()?.usage ?? [];
-    return usage.reduce((best, load, index) => load > usage[best] ? index : best, 0);
+    const loads = usage();
+    if (status() !== 'live' || !loads.length) return undefined;
+    const index = loads.reduce((best, load, index) => load > loads[best] ? index : best, 0);
+    return { index, load: loads[index] };
   });
 
   return (
-    <main class="panel" aria-labelledby="panel-title">
-      <PanelHeader id="panel-title" title="CPU activity" onClose={close} />
+    <main class="panel popup-frame activity-popup cpu-panel" aria-labelledby="panel-title">
+      <PanelHeader id="panel-title" title="CPU Activity" onClose={close} icon={<BarIcon name="cpu" />} />
 
-      <div class="overview">
-        <div><span>Total</span><strong>{status() === 'live' ? `${latest()?.total}%` : '—'}</strong></div>
-        <div><span>Busiest</span><strong>{status() === 'live' ? `${processorLabel(busiest())} · ${latest()?.usage[busiest()]}%` : '—'}</strong></div>
-        <div class="overview-heatmap" title={`All logical processors, last ${formatWindow(historySeconds())}`}>
-          <Heatmap samples={visibleSamples()} length={historySeconds()} />
-          <div class="heatmap-key"><span>0%</span><i /><span>100%</span></div>
-        </div>
+      <div class="popup-frame activity-card cpu-overview-frame">
+        <PanelSection scope="cpu" id="overall" label="Overall CPU" class="cpu-overall" detail={
+          <>
+            <strong class="cpu-overall-load">{status() === 'live' ? usageLabel(latest()?.total) : '—'}</strong>
+            <Show when={busiest()}>
+              {cpu => (
+                <span class="panel-section-detail">
+                  Busiest · {processorLabel(cpu().index)} · {usageLabel(cpu().load)}
+                </span>
+              )}
+            </Show>
+          </>
+        }>
+          <div class="chart-body cpu-overall-plot">
+            <div class="chart-scale" aria-hidden="true"><span>100%</span><span>0%</span></div>
+            <HistoryGraph values={totalHistory()} length={historySeconds()} tone="cpu" />
+            <Show when={status() !== 'live'}>
+              <p class="chart-status" role="status">
+                {status() === 'starting' ? 'Waiting for CPU samples…' : 'CPU data unavailable'}
+              </p>
+            </Show>
+          </div>
+        </PanelSection>
+        <PanelSection scope="cpu" id="heatmap" label="Heatmap" class="cpu-heatmap-section" detail={
+          <span class="panel-section-detail">
+            {usage().length > 0 && `${usage().length} ${usage().length === 1 ? 'row' : 'rows'} · `}
+            Last {formatWindow(historySeconds())}
+          </span>
+        }>
+          <Show when={usage().length}>
+            <div class="cpu-heatmap-scroll" tabIndex={0} role="region"
+              aria-label="Heatmap, one row per logical processor, oldest to newest left to right">
+              <div class="cpu-heatmap-axis" aria-hidden="true">
+                <For each={heatmapLabels()}>
+                  {index => <span style={{ top: `${index * CPU_HEATMAP_ROW_HEIGHT}px` }}>{processorLabel(index)}</span>}
+                </For>
+              </div>
+              <ThermalHeatmap processorCount={usage().length} samples={visibleSamples()} length={historySeconds()} />
+            </div>
+          </Show>
+        </PanelSection>
       </div>
 
-      <section class="chart" aria-label="Selected processor history">
-        <div class="chart-header">
-          <h2>{processorLabel(selected())}</h2>
-          <div>
-            <strong>{status() === 'live' ? `${latest()?.usage[selected()]}%` : '—'}</strong>
-            <span>{status() === 'live' ? `Peak ${peak()}%` : ''}</span>
-          </div>
-        </div>
-        <div class="chart-body">
-          <div class="chart-scale" aria-hidden="true"><span>100%</span><span>50%</span><span>0%</span></div>
-          <HistoryGraph values={history()} length={historySeconds()} tone="cpu" />
-          <Show when={status() !== 'live'}>
-            <p class="chart-status" role="status">
-              {status() === 'starting' ? 'Waiting for CPU samples…' : 'CPU data unavailable'}
-            </p>
-          </Show>
-        </div>
-        <div class="chart-time"><span>{formatWindow(historySeconds())} ago</span><span>Now</span></div>
-      </section>
+      <PanelSection scope="cpu" id="processors" label="Logical processors" class="popup-frame activity-card cpu-processor-section" detail={
+        <>
+          <span class="cpu-processor-count">{usage().length || ''}</span>
+          <span class="panel-section-detail">Last {formatWindow(historySeconds())} · 0–100%</span>
+        </>
+      }>
+        <Show when={usage().length}>
+          <ul class="cpu-processor-grid" classList={{ dense: usage().length > 16 }}
+            aria-labelledby="cpu-processors-title" tabIndex={0}>
+            <Index each={usage()}>
+              {(load, index) => {
+                const history = createMemo(() => visibleSamples().map(sample => sample.usage[index]));
+                const peak = () => history().reduce<number>((max, value) => Math.max(max, value ?? 0), 0);
+                return (
+                  <li class="popup-frame cpu-processor-tile" classList={{ busiest: busiest()?.index === index }}
+                    title={history().length ? `Peak ${peak()}% in the last ${formatWindow(historySeconds())}` : undefined}>
+                    <div class="cpu-processor-label">
+                      <span>{processorLabel(index)}</span>
+                      <strong>{status() === 'live' ? usageLabel(load()) : '—'}</strong>
+                    </div>
+                    <HistoryGraph compact values={history()} length={historySeconds()} tone="cpu" />
+                  </li>
+                );
+              }}
+            </Index>
+          </ul>
+        </Show>
+      </PanelSection>
 
-      <section class="processors" aria-labelledby="processor-title">
-        <h2 id="processor-title">Logical processors <span>{latest()?.usage.length ?? ''}</span></h2>
-        <div class="processor-grid">
-          <Index each={latest()?.usage}>
-            {(load, index) => (
-              <button
-                class="processor"
-                aria-pressed={selected() === index}
-                onClick={() => setSelected(index)}
-              >
-                <span>{processorLabel(index)}</span>
-                <strong>{status() === 'live' ? `${load()}%` : '—'}</strong>
-                <i aria-hidden="true" style={{ '--load': status() === 'live' ? `${load()}%` : '0%' }} />
-              </button>
-            )}
-          </Index>
-        </div>
-      </section>
-
-      <section class="memory-processes cpu-processes" aria-labelledby="cpu-process-title">
-        <h2 id="cpu-process-title">
-          Top processes <span>{historyWindow() ? `· last ${formatWindow(historyWindow())}` : ''}</span>
-        </h2>
+      <PanelSection scope="cpu" id="processes" label="Top processes" class="popup-frame activity-card cpu-processes" detail={
+        <span class="panel-section-detail">{historyWindow() ? `Last ${formatWindow(historyWindow())}` : ''}</span>
+      }>
         <Show
           when={processStatus() === 'live' && sortedProcesses().length}
           fallback={<p class="process-status" role="status">
@@ -192,7 +223,7 @@ function Panel() {
             </tbody>
           </table>
         </Show>
-      </section>
+      </PanelSection>
     </main>
   );
 }

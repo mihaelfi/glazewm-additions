@@ -2,13 +2,16 @@ import { createEffect, createMemo, For, Show } from 'solid-js';
 import { render } from 'solid-js/web';
 import { shellSpawn } from 'zebar';
 import { useCloseActivityPanel } from './activity-panel';
+import { BarIcon } from './bar-icon';
 import { useDriveHistoryFeed } from './metrics-feed';
 import { PanelHeader } from './panel-header';
+import { PanelSection } from './panel-section';
 import { formatWindow, showsDrive, useSettings } from './settings';
 import { driveLevel, formatDriveRate, formatDriveSize, useDrives, type Drive } from './drives';
 import { ThroughputGraph } from './throughput-graph';
 import { throughputCeiling } from './throughput';
 import './widget.css';
+import './activity-popup.css';
 import './storage.css';
 
 // Must match the program allowed for this widget in zpack.json.
@@ -48,65 +51,66 @@ function StoragePanel() {
   }
 
   return (
-    <main class="panel storage-panel popup-frame" aria-labelledby="storage-title">
-      <PanelHeader id="storage-title" title="Storage" onClose={close} />
+    <main class="panel popup-frame activity-popup storage-panel" aria-labelledby="storage-title">
+      <PanelHeader id="storage-title" title="Storage Activity" onClose={close} icon={<BarIcon name="storage" />} />
 
-      <div class="storage-overview popup-frame">
-        <div><strong>{drives().length ? formatDriveSize(totals().free) : '—'}</strong> free</div>
-        <div><strong>{drives().length ? formatDriveSize(totals().total) : '—'}</strong> total</div>
-        <div>
-          <Show when={fullest()} fallback={<strong>—</strong>}>
-            {drive => (
-              <strong class={driveLevel(drive())}>{`${drive().letter}: ${Math.round(drive().used)}%`}</strong>
-            )}
-          </Show> used
-        </div>
-      </div>
+      <PanelSection scope="storage" id="capacity" label="Capacity" class="popup-frame activity-card storage-capacity">
+        <dl class="storage-overview">
+          <div><dt>Free</dt><dd>{drives().length ? formatDriveSize(totals().free) : '—'}</dd></div>
+          <div><dt>Total</dt><dd>{drives().length ? formatDriveSize(totals().total) : '—'}</dd></div>
+          <div>
+            <dt>Fullest</dt>
+            <Show when={fullest()} fallback={<dd>—</dd>}>
+              {drive => <dd class={driveLevel(drive())}>{`${drive().letter}: ${Math.round(drive().used)}% used`}</dd>}
+            </Show>
+          </div>
+        </dl>
+      </PanelSection>
 
-      <Show when={drives().length} fallback={<p class="process-status" role="status">Loading drives…</p>}>
-        <div class="throughput-legend" aria-label="Shared graph scale">
-          <span>Last {formatWindow(historySeconds())}</span>
-          <span class="throughput-key drive-read">Read</span>
-          <span class="throughput-key drive-write">Write</span>
-          <span class="throughput-scale">
+      <PanelSection scope="storage" id="drives" label="Drive Activity" class="popup-frame activity-card activity-scroll-card" detail={
+        <span class="panel-section-detail">
+          Last {formatWindow(historySeconds())} · <span class="throughput-scale">
             {status() === 'unavailable' ? 'Collector unavailable' : `${formatDriveRate(ceiling())} max`}
           </span>
-        </div>
-        <ul class="drive-list" aria-label="Drives">
-          <For each={drives()}>
-            {drive => (
-              <li>
-                <button
-                  class={`drive-row popup-frame ${driveLevel(drive)}`}
-                  type="button"
-                  title={`Open ${drive.root} in File Explorer`}
-                  onClick={() => openDrive(drive)}
-                >
-                  <span class="drive-tile-header">
-                    <b class="drive-letter">{drive.letter}:</b>
-                    <strong class="drive-name" title={drive.label}>{drive.label}</strong>
-                    <span class="drive-used">{Math.round(drive.used)}% used</span>
-                    <span class="drive-free"><strong>{formatDriveSize(drive.free)}</strong> free of {formatDriveSize(drive.total)}</span>
-                    <span class="drive-filesystem" title={drive.removable ? `${drive.fileSystem} · removable` : undefined}>{drive.fileSystem}</span>
-                  </span>
-                  <i class="drive-row-meter" aria-hidden="true" style={{ '--used': `${drive.used}%` }} />
-                  <ThroughputGraph
-                    class="drive-history-graph" samples={samples()} length={historySeconds()} ceiling={ceiling()}
-                    series={[
-                      { color: '--drive-read', value: sample => sample.driveRates?.[drive.letter]?.read },
-                      { color: '--drive-write', value: sample => sample.driveRates?.[drive.letter]?.write },
-                    ]}
-                  />
-                  <span class="drive-row-activity">
-                    <span><span class="drive-read">Read</span> <strong>{formatDriveRate(driveRates()?.[drive.letter]?.read)}</strong></span>
-                    <span><span class="drive-write">Write</span> <strong>{formatDriveRate(driveRates()?.[drive.letter]?.write)}</strong></span>
-                  </span>
-                </button>
-              </li>
-            )}
-          </For>
-        </ul>
-      </Show>
+        </span>
+      }>
+        <Show when={drives().length} fallback={<p class="process-status" role="status">Loading drives…</p>}>
+          <ul class="drive-list" aria-label="Drives" tabIndex={0}>
+            <For each={drives()}>
+              {drive => (
+                <li>
+                  <button
+                    class={`drive-row popup-frame ${driveLevel(drive)}`}
+                    type="button"
+                    title={`Open ${drive.root} in File Explorer`}
+                    onClick={() => openDrive(drive)}
+                  >
+                    <span class="drive-tile-header">
+                      <b class="drive-letter">{drive.letter}:</b>
+                      <strong class="drive-name" title={drive.label}>{drive.label}</strong>
+                      <span class="drive-used">{Math.round(drive.used)}% used</span>
+                      <span class="drive-free"><strong>{formatDriveSize(drive.free)}</strong> free of {formatDriveSize(drive.total)}</span>
+                      <span class="drive-filesystem" title={drive.removable ? `${drive.fileSystem} · removable` : undefined}>{drive.fileSystem}</span>
+                    </span>
+                    <i class="drive-row-meter" aria-hidden="true" style={{ '--used': `${drive.used}%` }} />
+                    <ThroughputGraph
+                      class="drive-history-graph" samples={samples()} length={historySeconds()} ceiling={ceiling()}
+                      series={[
+                        { color: '--drive-read', value: sample => sample.driveRates?.[drive.letter]?.read },
+                        { color: '--drive-write', value: sample => sample.driveRates?.[drive.letter]?.write },
+                      ]}
+                    />
+                    <span class="drive-row-activity">
+                      <span><span class="drive-read">Read</span> <strong>{formatDriveRate(driveRates()?.[drive.letter]?.read)}</strong></span>
+                      <span><span class="drive-write">Write</span> <strong>{formatDriveRate(driveRates()?.[drive.letter]?.write)}</strong></span>
+                    </span>
+                  </button>
+                </li>
+              )}
+            </For>
+          </ul>
+        </Show>
+      </PanelSection>
     </main>
   );
 }

@@ -1,7 +1,8 @@
+import type { JSX } from 'solid-js';
 import { openActivityPanel } from './activity-panel';
 
 /** Popup title with a settings button and a close button. */
-export function PanelHeader(props: { id: string; title: string; onClose: () => void }) {
+export function PanelHeader(props: { id: string; title: string; onClose: () => void; icon?: JSX.Element }) {
   function openSettings() {
     // This popup closes on blur when Settings takes focus.
     void openActivityPanel('settings').catch(error => console.error('Could not open settings', error));
@@ -9,7 +10,7 @@ export function PanelHeader(props: { id: string; title: string; onClose: () => v
 
   return (
     <header class="panel-header">
-      <h1 id={props.id}>{props.title}</h1>
+      <h1 id={props.id}>{props.icon}{props.title}</h1>
       <div class="panel-actions">
         <button class="close-panel settings-button" aria-label="Open settings" title="Settings" onClick={openSettings}>
           <svg class="gear-icon" viewBox="0 0 20 20" aria-hidden="true">

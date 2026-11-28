@@ -1,11 +1,15 @@
 import { createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show } from 'solid-js';
 import { render } from 'solid-js/web';
 import { useCloseActivityPanel } from './activity-panel';
+import { BarIcon } from './bar-icon';
 import { PanelHeader } from './panel-header';
+import { PanelSection } from './panel-section';
 import { formatWindow, gpuIndex, useSettings } from './settings';
 import { HistoryGraph } from './history-graph';
-import { GPU_ENGINES, requestMetrics, useMetricsFeed } from './metrics-feed';
+import { GPU_ENGINES, requestMetrics, useMetricsFeed, type GpuSample } from './metrics-feed';
 import './widget.css';
+import './activity-popup.css';
+import './gpu-panel.css';
 
 interface GpuProcess {
   adapter: number;
@@ -26,10 +30,11 @@ function formatMemory(bytes: number | undefined) {
   return `${formatCapacity.format(bytes / mebibyte)} MiB`;
 }
 
-/** Selected engine: -1 is overall load, otherwise an index into GPU_ENGINES. */
-const engineLabel = (engine: number) => engine < 0 ? 'Overall' : GPU_ENGINES[engine];
-/** Short names that fit the six-column engine grid. */
-const shortEngineLabel = (engine: number) => engineLabel(engine).replace('Video ', '');
+const formatUsage = (value: number | undefined) => value === undefined ? '—' : `${value}%`;
+
+/** A missing engine index means overall adapter load. */
+const loadOf = (sample: GpuSample | undefined, index: number | undefined) =>
+  index === undefined ? sample?.usage : sample?.engines[index];
 
 function GpuPanel() {
   const close = useCloseActivityPanel();
@@ -40,21 +45,34 @@ function GpuPanel() {
   // Start on the GPU the bar follows, until the user picks a tab.
   let picked = false;
   createEffect(() => {
-    if (!picked && loaded() && gpus().length) setAdapter(gpuIndex(settings(), gpus()));
+    const available = gpus();
+    if (available.length && ((!picked && loaded()) || adapter() >= available.length)) {
+      setAdapter(gpuIndex(settings(), available));
+    }
   });
-  const [engine, setEngine] = createSignal(-1);
+  const [engine, setEngine] = createSignal<number>();
   const [processes, setProcesses] = createSignal<GpuProcess[]>([]);
   const [processStatus, setProcessStatus] = createSignal<'loading' | 'live' | 'unavailable'>('loading');
 
   const info = () => gpus()[adapter()];
   const current = () => status() === 'live' ? samples().at(-1)?.gpu?.[adapter()] : undefined;
-  const loadOf = (sample: { usage: number; engines: number[] } | undefined, index: number) =>
-    sample === undefined ? undefined : index < 0 ? sample.usage : sample.engines[index];
-  const history = createMemo(() =>
-    status() === 'live' ? samples().map(sample => loadOf(sample.gpu?.[adapter()], engine())) : [],
+  const adapterHistory = createMemo(() =>
+    status() === 'live' ? samples().map(sample => sample.gpu?.[adapter()]) : [],
   );
-  const peak = createMemo(() => Math.max(0, ...history().map(value => value ?? 0)));
+  const history = createMemo(() => adapterHistory().map(sample => loadOf(sample, engine())));
+  const peak = createMemo(() => history().reduce<number | undefined>(
+    (highest, value) => value === undefined ? highest : Math.max(highest ?? 0, value),
+    undefined,
+  ));
   const selectedLoad = () => loadOf(current(), engine());
+  const historyTitle = () => {
+    const selected = engine();
+    return selected === undefined ? 'GPU Usage' : `${GPU_ENGINES[selected]} Usage`;
+  };
+  const temperature = () => {
+    const value = current()?.temperature;
+    return value === undefined ? '—' : `${Math.round(value)}°C`;
+  };
   const dedicatedShare = () => {
     const total = info()?.dedicatedTotal;
     const used = current()?.dedicatedUsed;
@@ -90,16 +108,18 @@ function GpuPanel() {
   });
 
   return (
-    <main class="panel gpu-panel" aria-labelledby="gpu-title">
-      <PanelHeader id="gpu-title" title="GPU activity" onClose={close} />
+    <main class="panel popup-frame activity-popup gpu-panel" aria-labelledby="gpu-title">
+      <PanelHeader id="gpu-title" title="GPU Activity" onClose={close} icon={<BarIcon name="gpu" />} />
 
-      <Show when={gpus().length > 1} fallback={<p class="adapter-name">{info()?.name ?? ''}</p>}>
-        <div class="adapter-tabs" role="tablist" aria-label="Graphics adapter">
+      <Show when={gpus().length > 1} fallback={
+        <Show when={info()}>{gpu => <p class="gpu-adapter-name">{gpu().name}</p>}</Show>
+      }>
+        <div class="gpu-adapter-tabs" role="group" aria-label="Graphics adapter">
           <For each={gpus()}>
             {(gpu, index) => (
               <button
-                role="tab"
-                aria-selected={adapter() === index()}
+                type="button"
+                aria-pressed={adapter() === index()}
                 title={gpu.name}
                 onClick={() => {
                   picked = true;
@@ -113,62 +133,66 @@ function GpuPanel() {
         </div>
       </Show>
 
-      <div class="overview gpu-overview">
-        <div><span>Load</span><strong>{current() ? `${current()!.usage}%` : '—'}</strong></div>
-        <div>
-          <span>Dedicated memory</span>
-          <strong>{formatMemory(current()?.dedicatedUsed)} <small>/ {formatMemory(info()?.dedicatedTotal)}</small></strong>
-          <i class="memory-meter" aria-hidden="true" style={{ '--share': `${dedicatedShare()}%` }} />
-        </div>
-        <div><span>Shared memory</span><strong>{formatMemory(current()?.sharedUsed)}</strong></div>
-        <div>
-          <span>Temperature</span>
-          <strong>{current()?.temperature === undefined ? '—' : `${Math.round(current()!.temperature!)}°C`}</strong>
-        </div>
-      </div>
-
-      <section class="chart" aria-label="Selected engine history">
-        <div class="chart-header">
-          <h2>{engineLabel(engine())}</h2>
+      <PanelSection scope="gpu" id="usage" label={historyTitle()} class="popup-frame activity-card gpu-usage-card" detail={
+        <>
+          <strong class="gpu-usage">{formatUsage(selectedLoad())}</strong>
+          <Show when={peak() !== undefined}>
+            <span class="panel-section-detail">Peak {formatUsage(peak())}</span>
+          </Show>
+        </>
+      }>
+        <dl class="gpu-capacity">
           <div>
-            <strong class="gpu-usage">{selectedLoad() === undefined ? '—' : `${selectedLoad()}%`}</strong>
-            <span>{current() ? `Peak ${peak()}%` : ''}</span>
+            <dt>Dedicated Memory</dt>
+            <dd>{formatMemory(current()?.dedicatedUsed)} <small>/ {formatMemory(info()?.dedicatedTotal)}</small></dd>
+            <i class="gpu-vram-meter" aria-hidden="true" style={{ '--share': `${dedicatedShare()}%` }} />
           </div>
-        </div>
+          <div><dt>Shared Memory</dt><dd>{formatMemory(current()?.sharedUsed)}</dd></div>
+          <div><dt>Temperature</dt><dd>{temperature()}</dd></div>
+        </dl>
         <div class="chart-body">
           <div class="chart-scale" aria-hidden="true"><span>100%</span><span>50%</span><span>0%</span></div>
           <HistoryGraph values={history()} length={historySeconds()} tone="gpu" />
-          <Show when={!current()}>
+          <Show when={selectedLoad() === undefined}>
             <p class="chart-status" role="status">
-              {status() === 'starting' ? 'Waiting for GPU samples…' : 'GPU data unavailable'}
+              {status() === 'starting' ? 'Waiting for GPU samples…'
+                : current() ? 'Engine data unavailable' : 'GPU data unavailable'}
             </p>
           </Show>
         </div>
         <div class="chart-time"><span>{formatWindow(historySeconds())} ago</span><span>Now</span></div>
-      </section>
+      </PanelSection>
 
-      <section class="processors gpu-engines" aria-labelledby="engine-title">
-        <h2 id="engine-title">Engines</h2>
-        <div class="processor-grid">
-          <Index each={[-1, ...GPU_ENGINES.keys()]}>
-            {index => (
-              <button
-                class="processor"
-                aria-pressed={engine() === index()}
-                title={engineLabel(index())}
-                onClick={() => setEngine(index())}
-              >
-                <span>{shortEngineLabel(index())}</span>
-                <strong>{loadOf(current(), index()) === undefined ? '—' : `${loadOf(current(), index())}%`}</strong>
-                <i aria-hidden="true" style={{ '--load': `${loadOf(current(), index()) ?? 0}%` }} />
-              </button>
-            )}
-          </Index>
+      <PanelSection scope="gpu" id="engines" label="Engines" class="popup-frame activity-card gpu-engines" detail={
+        <span class="panel-section-detail">Last {formatWindow(historySeconds())} · 0–100%</span>
+      }>
+        <div class="gpu-engine-grid">
+          <For each={GPU_ENGINES}>
+            {(name, index) => {
+              const selected = () => engine() === index();
+              const values = createMemo(() => adapterHistory().map(sample => loadOf(sample, index())));
+              const load = () => formatUsage(loadOf(current(), index()));
+              return (
+                <button
+                  type="button"
+                  class="popup-frame gpu-engine-tile"
+                  aria-pressed={selected()}
+                  aria-label={`${name} ${load()}`}
+                  aria-controls="gpu-usage-body"
+                  title={selected() ? 'Show overall GPU history above' : `Show larger ${name} history above`}
+                  onClick={() => setEngine(selected() ? undefined : index())}
+                >
+                  <span>{name.replace('Video ', '')}</span>
+                  <strong>{load()}</strong>
+                  <HistoryGraph compact values={values()} length={historySeconds()} tone="gpu" />
+                </button>
+              );
+            }}
+          </For>
         </div>
-      </section>
+      </PanelSection>
 
-      <section class="memory-processes" aria-labelledby="gpu-process-title">
-        <h2 id="gpu-process-title">Top processes</h2>
+      <PanelSection scope="gpu" id="processes" label="Top Processes" class="popup-frame activity-card gpu-processes">
         <Show
           when={processStatus() === 'live' && visibleProcesses().length}
           fallback={<p class="process-status" role="status">
@@ -202,7 +226,7 @@ function GpuPanel() {
             </tbody>
           </table>
         </Show>
-      </section>
+      </PanelSection>
     </main>
   );
 }

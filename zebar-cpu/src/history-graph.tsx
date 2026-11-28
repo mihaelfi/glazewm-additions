@@ -1,9 +1,10 @@
 import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
+import { cpuTraceColor, cpuTraceStops } from './cpu-thermal';
 
 const colors = {
-  cpu: { line: '#a69aff', dot: '#d2caff', fillTop: '#9083ff66', fillBottom: '#9083ff08' },
-  ram: { line: '#62d4cc', dot: '#b8fff3', fillTop: '#62d4cc66', fillBottom: '#62d4cc0d' },
-  gpu: { line: '#9bd66f', dot: '#d6f7bd', fillTop: '#8fcf6366', fillBottom: '#8fcf630b' },
+  cpu: { grid: '#2a3657', fillTop: '#398dd54d', fillBottom: '#398dd508' },
+  ram: { grid: '#28484e', line: '#62d4cc', dot: '#b8fff3', fillTop: '#62d4cc66', fillBottom: '#62d4cc0d' },
+  gpu: { grid: '#374d37', line: '#9bd66f', dot: '#d6f7bd', fillTop: '#8fcf6366', fillBottom: '#8fcf630b' },
 };
 
 export function useHistoryCanvas(draw: (context: CanvasRenderingContext2D, width: number, height: number) => void) {
@@ -49,9 +50,10 @@ export function HistoryGraph(props: {
     const margin = props.compact ? 2 : 4;
     const bottom = height - margin;
     const span = width - margin * 2;
-    const palette = colors[props.tone];
+    const tone = props.tone;
+    const palette = colors[tone];
     if (!props.compact) {
-      context.strokeStyle = '#2a3657';
+      context.strokeStyle = palette.grid;
       context.lineWidth = 1;
       for (const y of [margin, height / 2, bottom]) {
         context.beginPath();
@@ -65,7 +67,7 @@ export function HistoryGraph(props: {
     const length = Math.max(2, props.length);
     const start = length - values.length;
     let firstX: number | undefined;
-    let lastPoint: { x: number; y: number } | undefined;
+    let lastPoint: { x: number; y: number; value: number } | undefined;
     values.forEach((value, index) => {
       if (value === undefined) return;
       const x = margin + span * (start + index) / (length - 1);
@@ -76,7 +78,7 @@ export function HistoryGraph(props: {
         firstX = x;
         line.moveTo(x, y);
       }
-      lastPoint = { x, y };
+      lastPoint = { x, y, value };
     });
     if (!lastPoint || firstX === undefined) return;
 
@@ -90,11 +92,17 @@ export function HistoryGraph(props: {
     context.fillStyle = gradient;
     context.fill(area);
 
-    context.strokeStyle = palette.line;
+    if (tone === 'cpu') {
+      const heat = context.createLinearGradient(0, bottom, 0, margin);
+      for (const { position, color } of cpuTraceStops) heat.addColorStop(position, color);
+      context.strokeStyle = heat;
+    } else {
+      context.strokeStyle = colors[tone].line;
+    }
     context.lineWidth = props.compact ? 1.5 : 2;
     context.lineJoin = 'round';
     context.stroke(line);
-    context.fillStyle = palette.dot;
+    context.fillStyle = tone === 'cpu' ? cpuTraceColor(lastPoint.value) : colors[tone].dot;
     context.beginPath();
     context.arc(lastPoint.x, lastPoint.y, props.compact ? 1.3 : 3, 0, 2 * Math.PI);
     context.fill();

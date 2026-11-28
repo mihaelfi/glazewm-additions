@@ -5,7 +5,12 @@ const paths = {
   gpu: 'M3 5v14m0-12h18v10h-3m-15 0h12v2h3v-2M11 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm5 3h3',
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-14v5l3 2',
   timer: 'M12 21a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm0-14V3m-2 0h4m4 5 2-2m-8 5v4',
+  calendar: 'M4 6h16v14H4zM4 10h16M8 4v4m8-4v4m-9 7h2m2 0h2m2 0h2',
   battery: 'M2 7h18v10H2zm18 3h2v4h-2M5 10h10v4H5z',
+  network: 'M7 3v17m-4-4 4 4 4-4M17 21V4m-4 4 4-4 4 4',
+  copy: 'M8 8h12v12H8zM16 8V4H4v12h4',
+  check: 'm4 12 5 5L20 6',
+  external: 'M14 4h6v6m0-6-9 9m9 1v6H4V4h6',
   thermometer: 'M9 14.5V5a3 3 0 1 1 6 0v9.5a5 5 0 1 1-6 0ZM12 8v9m0 2v.01',
 };
 

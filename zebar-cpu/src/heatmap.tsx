@@ -1,38 +1,8 @@
-import { createEffect } from 'solid-js';
+import { cpuHeatColor } from './cpu-thermal';
 import { useHistoryCanvas } from './history-graph';
 import type { MetricsSample } from './metrics-feed';
 
-/** Longer windows are merged into this many columns, keeping each column's peak. */
-const MAX_COLUMNS = 120;
-
-const stops = [
-  [37, 55, 104], // Idle blue
-  [82, 66, 157],
-  [152, 74, 177],
-  [218, 78, 130],
-  [255, 81, 93], // Full-load red
-];
-
-function palette(values: number[][]) {
-  return Array.from({ length: 101 }, (_, load) => {
-    const position = load * (values.length - 1) / 100;
-    const index = Math.min(Math.floor(position), values.length - 2);
-    const fraction = position - index;
-    return values[index].map((channel, component) =>
-      Math.round(channel + (values[index + 1][component] - channel) * fraction),
-    );
-  });
-}
-
-const colors = palette(stops);
-const thermalColors = palette([
-  [13, 43, 82],
-  [29, 98, 192],
-  [57, 168, 213],
-  [244, 189, 61],
-  [249, 119, 39],
-  [246, 66, 57],
-]).map(channels => `rgb(${channels.join(' ')})`);
+export const CPU_HEATMAP_ROW_HEIGHT = 3;
 
 /** Peak load per cell, preserving spikes when time or CPU rows are grouped. */
 function peakCells(samples: MetricsSample[], length: number, columns: number, rows: number, cores: number) {
@@ -51,49 +21,31 @@ function peakCells(samples: MetricsSample[], length: number, columns: number, ro
   return peaks;
 }
 
-/** Keep square cells readable on a small bar, regardless of logical processor count. */
-export function BarHeatmap(props: { samples: MetricsSample[]; length: number }) {
+/** Keep cells square as processor count and graph dimensions change. */
+export function ThermalHeatmap(props: { samples: MetricsSample[]; length: number; processorCount?: number }) {
+  const rowCount = () => Math.max(1, props.processorCount ?? 1);
   const canvas = useHistoryCanvas((context, width, height) => {
     const length = Math.max(1, props.length);
-    const cores = Math.max(1, props.samples.at(-1)?.usage.length ?? 1);
-    const pitch = Math.max(3, Math.floor(height / 6));
-    const rows = Math.min(cores, Math.max(1, Math.floor(height / pitch)));
-    const columns = Math.min(length, Math.max(1, Math.floor(width / pitch)));
-    const x = Math.floor((width - columns * pitch) / 2);
-    const y = Math.floor((height - rows * pitch) / 2);
+    const full = props.processorCount !== undefined;
+    const cores = full ? rowCount() : Math.max(1, props.samples.at(-1)?.usage.length ?? 1);
+    const rowPitch = full ? CPU_HEATMAP_ROW_HEIGHT : Math.max(3, Math.floor(height / 6));
+    const rows = full ? cores : Math.min(cores, Math.max(1, Math.floor(height / rowPitch)));
+    const columns = Math.min(length, Math.max(1, Math.floor(width / rowPitch)));
+    const columnPitch = full ? width / columns : rowPitch;
+    const x = full ? 0 : Math.floor((width - columns * columnPitch) / 2);
+    const y = full ? 0 : Math.floor((height - rows * rowPitch) / 2);
     const peaks = peakCells(props.samples, length, columns, rows, cores);
     peaks.forEach((load, cell) => {
       if (load < 0) return;
-      context.fillStyle = thermalColors[load] ?? thermalColors[0];
-      context.fillRect(x + (cell % columns) * pitch, y + Math.floor(cell / columns) * pitch, pitch - 1, pitch - 1);
+      context.fillStyle = cpuHeatColor(load);
+      const start = Math.floor(x + (cell % columns) * columnPitch);
+      const end = Math.floor(x + (cell % columns + 1) * columnPitch);
+      context.fillRect(start, y + Math.floor(cell / columns) * rowPitch, end - start - 1, rowPitch - 1);
     });
   });
-  return <canvas ref={canvas} class="heatmap bar-heatmap" aria-hidden="true" />;
-}
-
-/** One row per logical processor, newest on the right, covering `length` seconds. */
-export function Heatmap(props: { samples: MetricsSample[]; length: number }) {
-  let canvas!: HTMLCanvasElement;
-
-  createEffect(() => {
-    const samples = props.samples;
-    const length = Math.max(1, props.length);
-    const columns = Math.min(length, MAX_COLUMNS);
-    const rows = samples.at(-1)?.usage.length ?? 1;
-    if (canvas.width !== columns) canvas.width = columns;
-    if (canvas.height !== rows) canvas.height = rows;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-
-    const peaks = peakCells(samples, length, columns, rows, rows);
-    const pixels = context.createImageData(columns, rows);
-    peaks.forEach((load, cell) => {
-      if (load < 0) return;
-      pixels.data.set(colors[load] ?? colors[0], cell * 4);
-      pixels.data[cell * 4 + 3] = 255;
-    });
-    context.putImageData(pixels, 0, 0);
-  });
-
-  return <canvas ref={canvas} class="heatmap" width={MAX_COLUMNS} height={1} aria-hidden="true" />;
+  return (
+    <canvas ref={canvas} class={props.processorCount === undefined ? 'heatmap bar-heatmap' : 'cpu-heatmap'}
+      style={props.processorCount === undefined ? undefined : { height: `${rowCount() * CPU_HEATMAP_ROW_HEIGHT}px` }}
+      aria-hidden="true" />
+  );
 }

@@ -1,11 +1,15 @@
 import { createMemo, createSignal, Index, onCleanup, onMount, Show } from 'solid-js';
 import { render } from 'solid-js/web';
 import { useCloseActivityPanel } from './activity-panel';
+import { BarIcon } from './bar-icon';
 import { PanelHeader } from './panel-header';
+import { PanelSection } from './panel-section';
 import { formatWindow, useSettings } from './settings';
 import { HistoryGraph } from './history-graph';
 import { memoryPercent, requestMetrics, useMetricsFeed } from './metrics-feed';
 import './widget.css';
+import './activity-popup.css';
+import './ram-panel.css';
 
 interface ProcessMemory {
   name: string;
@@ -23,6 +27,8 @@ function formatMemory(bytes: number | undefined) {
   return `${formatCapacity.format(bytes / mebibyte)} MiB`;
 }
 
+const formatUsage = (value: number | undefined) => value === undefined ? '—' : `${Math.round(value)}%`;
+
 function RamPanel() {
   const close = useCloseActivityPanel();
   const { settings } = useSettings();
@@ -33,13 +39,14 @@ function RamPanel() {
 
   const memory = () => status() === 'live' ? samples().at(-1)?.memory : undefined;
   const usage = () => memoryPercent(memory());
-  const usageLabel = () => {
-    const value = usage();
-    return value === undefined ? '—' : `${Math.round(value)}%`;
-  };
   const history = createMemo(() =>
     status() === 'live' ? samples().map(sample => memoryPercent(sample.memory)) : [],
   );
+  const peak = createMemo(() => history().reduce<number | undefined>(
+    (highest, value) => value === undefined ? highest : Math.max(highest ?? 0, value),
+    undefined,
+  ));
+  const largestWorkingSet = () => Math.max(1, processes()[0]?.bytes ?? 0);
 
   onMount(() => {
     let timer: number | undefined;
@@ -66,20 +73,22 @@ function RamPanel() {
   });
 
   return (
-    <main class="panel ram-panel" aria-labelledby="ram-title">
-      <PanelHeader id="ram-title" title="RAM activity" onClose={close} />
+    <main class="panel popup-frame activity-popup ram-panel" aria-labelledby="ram-title">
+      <PanelHeader id="ram-title" title="RAM Activity" onClose={close} icon={<BarIcon name="ram" />} />
 
-      <div class="overview ram-overview">
-        <div><span>Used</span><strong>{formatMemory(memory()?.used)}</strong></div>
-        <div><span>Available</span><strong>{formatMemory(memory()?.available)}</strong></div>
-        <div><span>Total RAM</span><strong>{formatMemory(memory()?.total)}</strong></div>
-      </div>
-
-      <section class="chart" aria-labelledby="ram-history-title">
-        <div class="chart-header">
-          <h2 id="ram-history-title">Memory usage</h2>
-          <strong class="ram-usage">{usageLabel()}</strong>
-        </div>
+      <PanelSection scope="ram" id="memory" label="Memory Usage" class="popup-frame activity-card ram-memory" detail={
+        <>
+          <strong class="ram-usage">{formatUsage(usage())}</strong>
+          <Show when={peak() !== undefined}>
+            <span class="panel-section-detail">Peak {formatUsage(peak())}</span>
+          </Show>
+        </>
+      }>
+        <dl class="ram-capacity">
+          <div><dt>Used</dt><dd>{formatMemory(memory()?.used)}</dd></div>
+          <div><dt>Available</dt><dd>{formatMemory(memory()?.available)}</dd></div>
+          <div><dt>Total</dt><dd>{formatMemory(memory()?.total)}</dd></div>
+        </dl>
         <div class="chart-body">
           <div class="chart-scale" aria-hidden="true"><span>100%</span><span>50%</span><span>0%</span></div>
           <HistoryGraph values={history()} length={historySeconds()} tone="ram" />
@@ -90,14 +99,15 @@ function RamPanel() {
           </Show>
         </div>
         <div class="chart-time"><span>{formatWindow(historySeconds())} ago</span><span>Now</span></div>
-      </section>
+      </PanelSection>
 
-      <section class="memory-processes" aria-labelledby="process-title">
-        <h2 id="process-title">Top 10 processes</h2>
+      <PanelSection scope="ram" id="processes" label="Top 10 Processes" class="popup-frame activity-card ram-processes">
         <Show
           when={processStatus() === 'live' && processes().length}
           fallback={<p class="process-status" role="status">
-            {processStatus() === 'loading' ? 'Loading processes…' : 'Process memory data unavailable'}
+            {processStatus() === 'loading' ? 'Loading processes…'
+              : processStatus() === 'live' ? 'Waiting for process samples…'
+              : 'Process memory data unavailable'}
           </p>}
         >
           <table class="process-table">
@@ -112,7 +122,7 @@ function RamPanel() {
                       <span
                         class="process-meter"
                         aria-hidden="true"
-                        style={{ '--share': `${100 * process().bytes / processes()[0].bytes}%` }}
+                        style={{ '--share': `${100 * process().bytes / largestWorkingSet()}%` }}
                       />
                       {formatMemory(process().bytes)}
                     </td>
@@ -122,7 +132,7 @@ function RamPanel() {
             </tbody>
           </table>
         </Show>
-      </section>
+      </PanelSection>
     </main>
   );
 }

@@ -6,7 +6,7 @@ import { BarIcon } from './bar-icon';
 import { useBarWindowHeight } from './bar-window';
 import { formatClock, useClockTime } from './clock';
 import { describeDrive, describeDriveActivity, DriveBars, useDrives } from './drives';
-import { BarHeatmap } from './heatmap';
+import { ThermalHeatmap } from './heatmap';
 import { HistoryGraph } from './history-graph';
 import { keyboardFlag } from './keyboard-flag';
 import { memoryPercent, useMetricsFeed } from './metrics-feed';
@@ -84,7 +84,7 @@ function Bar() {
     return usage === undefined ? '—' : `${usage}%`;
   };
   const gpuTitle = () => {
-    if (panelError() === 'gpu-activity') return 'GPU activity could not open. Click to retry.';
+    if (panelError() === 'gpu-activity') return 'GPU Activity could not open. Click to retry.';
     if (status() === 'unavailable' || (status() === 'live' && gpuUsage() === undefined)) {
       return 'GPU data unavailable. Click for details.';
     }
@@ -145,9 +145,9 @@ function Bar() {
       <Show when={shows('storage') && drives().length}>
         <button
           class="metric-button storage-button"
-          aria-label={`Storage. ${storageLabel()}. Open storage details`}
+          aria-label={`Storage. ${storageLabel()}. Open Storage Activity`}
           aria-haspopup="dialog"
-          title={panelError() === 'storage-activity' ? 'Storage details could not open. Click to retry.'
+          title={panelError() === 'storage-activity' ? 'Storage Activity could not open. Click to retry.'
             : `${drives().map(describeDrive).join('\n')}${drives().some(drive => activityMode(drive.letter) === 'marks')
               ? '\nActivity marks: read above, write below.' : ''}\nClick for details.`}
           onPointerDown={() => panels.press('storage-activity')}
@@ -162,9 +162,9 @@ function Bar() {
       <Show when={shows('ram')}>
         <button
           class="metric-button ram-button"
-          aria-label={ramUsage() === undefined ? 'Open RAM activity' : `RAM ${ramLabel()}. Open RAM activity`}
+          aria-label={ramUsage() === undefined ? 'Open RAM Activity' : `RAM ${ramLabel()}. Open RAM Activity`}
           aria-haspopup="dialog"
-          title={panelError() === 'ram-activity' ? 'RAM activity could not open. Click to retry.'
+          title={panelError() === 'ram-activity' ? 'RAM Activity could not open. Click to retry.'
             : status() === 'unavailable' ? 'RAM data unavailable. Click for details.'
             : `RAM usage, ${windowLabel()}. Click for details.`}
           onPointerDown={() => panels.press('ram-activity')}
@@ -180,16 +180,16 @@ function Bar() {
       <Show when={shows('cpu')}>
         <button
           class="metric-button cpu-button"
-          aria-label={status() === 'live' ? `CPU ${cpuLabel()}. Open CPU activity` : 'Open CPU activity'}
+          aria-label={status() === 'live' ? `CPU ${cpuLabel()}. Open CPU Activity` : 'Open CPU Activity'}
           aria-haspopup="dialog"
-          title={panelError() === 'cpu-activity' ? 'CPU activity could not open. Click to retry.'
+          title={panelError() === 'cpu-activity' ? 'CPU Activity could not open. Click to retry.'
             : status() === 'unavailable' ? 'CPU data unavailable. Click for details.'
             : `CPU load, ${windowLabel()}. Heatmap rows group logical processors by peak load when needed. Click for details.`}
           onPointerDown={() => panels.press('cpu-activity')}
           onClick={() => void togglePanel('cpu-activity')}
         >
           <BarIcon name="cpu" />
-          <BarHeatmap samples={status() === 'live' ? samples() : []} length={historySeconds()} />
+          <ThermalHeatmap samples={status() === 'live' ? samples() : []} length={historySeconds()} />
           <b class="metric-value">{cpuLabel()}</b>
         </button>
       </Show>
@@ -198,7 +198,7 @@ function Bar() {
       <Show when={shows('gpu') && (status() !== 'live' || gpus().length)}>
         <button
           class="metric-button gpu-button"
-          aria-label={gpuUsage() === undefined ? 'Open GPU activity' : `GPU ${gpuLabel()}. Open GPU activity`}
+          aria-label={gpuUsage() === undefined ? 'Open GPU Activity' : `GPU ${gpuLabel()}. Open GPU Activity`}
           aria-haspopup="dialog"
           title={gpuTitle()}
           onPointerDown={() => panels.press('gpu-activity')}
@@ -256,8 +256,8 @@ function Bar() {
         <button
           class="metric-button network-button"
           aria-haspopup="dialog"
-          aria-label={`${networkTitle()}. Download ${formatNetworkRate(network()?.total.download)}. Upload ${formatNetworkRate(network()?.total.upload)}. Open network activity.`}
-          title={panelError() === 'network-activity' ? 'Network activity could not open. Click to retry.' : `${networkTitle()}. Click for details.`}
+          aria-label={`${networkTitle()}. Download ${formatNetworkRate(network()?.total.download)}. Upload ${formatNetworkRate(network()?.total.upload)}. Open Network Activity.`}
+          title={panelError() === 'network-activity' ? 'Network Activity could not open. Click to retry.' : `${networkTitle()}. Click for details.`}
           onPointerDown={() => panels.press('network-activity')}
           onClick={() => void togglePanel('network-activity')}
         >

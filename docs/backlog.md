@@ -310,11 +310,26 @@ Items:
 - **Bar theme and adjustable height** · `done` 2026-11-28. Chamfered frames, subtle widget tints,
   shared icon geometry, circular drive meters, grouped thermal cells, height-aware controls,
   and the time centered below its date.
-- **Popup theme and CPU history grid** · `idea`. Extend the bar's visual style to the popups.
-  In CPU, show one history graph per logical processor on a shared scale and use a slimmer overall graph.
+- **CPU popup theme and history grid** · `done` 2026-11-28. Chamfered frames, a slimmer overall
+  graph, one graph per logical processor on a shared scale, and blue-to-red traces based on usage.
+- **Full CPU heatmap and collapsible cards** · `done` 2026-11-28. One heatmap row per logical
+  processor, independent remembered collapse states, shared Overview framing, and a stepped title.
+- **RAM Activity theme** · `done` 2026-11-28. Teal stepped header, grouped capacity and history
+  with a peak readout, and remembered collapse states for Memory Usage and Top 10 Processes.
+- **GPU Activity theme and engine history** · `done` 2026-11-28. Green stepped header,
+  three collapsible cards, and one mini-graph per engine with a selectable larger view.
+- **Network Activity theme** · `done` 2026-11-28. Violet stepped header, remembered Total
+  Traffic and Adapters sections, and full-width adapter histories with rates beside the graphs.
+- **Network adapter actions** · `done` 2026-11-28. Copy the displayed local IP and open the
+  relevant Windows network settings from each adapter card.
+- **Theme the bar popups** · `done` 2026-11-28. CPU, RAM, GPU, Storage, Network, and Clock
+  share stepped headers and chamfered cards with their own accent palettes. Clock adds
+  centered time and date, icon tabs, and matching Calendar and Timer cards.
 
 ## Zebar: storage
 
+- **Storage Activity theme** · `done` 2026-11-28. Added the stepped ice-blue header and two
+  collapsible cards that remember their state. Six drives still fit at the default popup size.
 - **Storage bar palette** · `done` 2026-11-28. Added ice-blue capacity arcs, a matching frame and
   icon, a navy gradient, and cyan/pink rate labels at idle. Verified with six Live rates readouts.
 - **Circular capacity meters on the bar** · `done` 2026-11-28. Show used capacity as an arc
