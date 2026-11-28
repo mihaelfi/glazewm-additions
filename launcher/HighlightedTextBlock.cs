@@ -59,7 +59,7 @@ public sealed class HighlightedTextBlock : TextBlock
         var run = new Run(text);
         if (highlighted)
         {
-            run.FontWeight = FontWeights.SemiBold;
+            run.FontWeight = FontWeights.Bold;
             run.SetResourceReference(TextElement.ForegroundProperty, "MatchBrush");
             run.SetResourceReference(TextElement.BackgroundProperty, "MatchBackgroundBrush");
         }

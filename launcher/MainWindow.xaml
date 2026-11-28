@@ -94,19 +94,24 @@
     <DataTemplate x:Key="ActionTemplate" DataType="{x:Type local:ActionRow}">
       <Grid>
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="38"/>
+          <ColumnDefinition Width="22"/>
+          <ColumnDefinition Width="32"/>
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <TextBlock x:Name="ActionGlyph" Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="15"
-                   Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="5,0,0,0"/>
-        <DockPanel Grid.Column="1" VerticalAlignment="Center" LastChildFill="True">
+        <!-- Ctrl+N runs this row -->
+        <TextBlock Grid.Column="0" Text="{Binding NumberLabel}" Visibility="{Binding NumberVisibility}" FontSize="11.5"
+                   Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   ToolTip="Ctrl+number runs this row"/>
+        <TextBlock x:Name="ActionGlyph" Grid.Column="1" Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="15"
+                   Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="2,0,0,0"/>
+        <DockPanel Grid.Column="2" VerticalAlignment="Center" LastChildFill="True">
           <local:HighlightedTextBlock x:Name="ActionTitle" DockPanel.Dock="Left" Value="{Binding TitleText}" FontSize="14"
                                       TextTrimming="CharacterEllipsis"/>
           <TextBlock Text="{Binding Detail}" Visibility="{Binding DetailVisibility}" FontSize="12" Margin="10,0,0,0"
                      Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
         </DockPanel>
-        <Border Grid.Column="2" Visibility="{Binding ShortcutVisibility}" Background="{StaticResource BadgeBrush}"
+        <Border Grid.Column="3" Visibility="{Binding ShortcutVisibility}" Background="{StaticResource BadgeBrush}"
                 CornerRadius="5" Padding="8,1" Margin="10,0,0,0" VerticalAlignment="Center">
           <TextBlock Text="{Binding ShortcutLabel}" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
         </Border>

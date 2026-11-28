@@ -49,6 +49,49 @@ with providers and actions around it.
   without workspaces (for example, `@N` and GlazeWM commands hidden; focusing an open window restores it).
   Useful for people who don't run GlazeWM.
 
+### Navigation, scopes and settings (proposal 2026-11-28, from the user's notes; decisions open)
+
+The user's concern: there are already many providers and no quick way to narrow to one, and the shell rows clutter Ctrl+K.
+Their PowerToys experience: prefixes (`>` …) are fast but easy to forget, so a query without one should still show
+everything, perhaps a few from each provider, and a legend of the prefixes should always be visible.
+
+How other launchers handle it (from what's known of them, not re-checked against their latest versions):
+PowerToys Run and Flow Launcher use one-character action keywords per plugin (`<` windows, `?` files, `=` calculator,
+`>` shell); each plugin is either in the global results or keyword-only. PowerToys Command Palette, Raycast and Alfred
+keep the root search mixed and open a command into its own page with its own filter (Raycast and Alfred show sections,
+Alfred browses folders with → and goes back with ←). Fluent Search and Windows Start show scope tabs you switch with the
+keyboard. VS Code's quick open lists every prefix when you type `?`.
+
+- **Sections in the mixed results** · `idea` · M. No prefix = everything, as now, but grouped: a top hit, then a section per
+  provider with a cap (about 5 windows, 4 apps, 3 tabs, 5 files and folders, 3 commands) and a "Show all 248 files ›" row
+  that opens that scope. Enter on the top hit stays one keystroke.
+- **Scope chips with prefixes** · `idea` · M. A strip under the search box: All · Apps · Windows · Tabs · Files · Folders ·
+  Commands, each with its prefix in dim text, so it is the always-visible legend. Ctrl+Tab / Ctrl+Shift+Tab switch scope;
+  typing a prefix at the start switches too and becomes the chip (it leaves the text box). Prefix characters to agree:
+  avoid `@` (workspaces), `\` `:` `%` `~` (paths, planned); for example `>` commands, `<` windows, `/` files and folders.
+- **Folder browsing** · `idea` · M (user request). → on a folder result opens the folder inside the launcher (Ctrl+K
+  still opens its actions): a path chip, the folder's items with size, file count and date. Typing filters the direct
+  items first, then matches anywhere below it (the service's `in:` search) with their relative path. Sort by name, size or
+  modified (Ctrl+S cycles; the header shows the order). → on a subfolder goes in; ← or Backspace with an empty filter goes up,
+  also above the starting folder; Esc returns to the results. The backend is ready: `children` sorts by size, name or
+  modified; `search` takes `in:`. Use case: you remember the parent folder's name, not the file's.
+- **One "Open shell ›" row** · `done` 2026-11-28, confirmed by the user (user request). Folders: "Open shell
+  here ›", files: "Open shell in its folder ›", with Terminal, PowerShell 7 and Command Prompt, each also as administrator.
+  Ctrl+Enter and Ctrl+Shift+Enter still work on folders. The Ctrl+K filter searches submenu rows, so `admin` finds them.
+- **Numbered rows in the action list** · `done` 2026-11-28, confirmed by the user (user request). Ctrl+1…9 and
+  Ctrl+0 run the first ten rows as shown, numbered on the left. On the result list Ctrl+1…9 still sends to a workspace.
+- **Bold matched letters** · `done` 2026-11-28 (user request). Bold instead of SemiBold (`HighlightedTextBlock.cs`).
+- **Launcher settings window** · `idea` · L (user request). A normal window (the popup closes on blur), same theme, opened
+  from a "Launcher settings" command and Ctrl+, in the launcher. Pages: General (hotkey), Search (providers on/off and
+  order, section sizes, prefixes), Aliases (list, edit, remove), Open with (rules below), File index (GlazeIndex drives,
+  excluded folders, demoted names through its pipe; replaces "Index settings UI"), Workspaces. It writes `settings.json`,
+  which the launcher already watches.
+- **Open with, including custom apps** · `idea` · M (user request; replaces "Open with… for files" below). Ctrl+K ›
+  Open with ›: the user's rules for this extension first, then the apps Windows registers for it (`SHAssocEnumHandlers`, the
+  list Windows' own Open with shows), then "Choose an app…", which searches apps and indexed `.exe` files and then offers
+  "Always offer for .txt". A rule: name, exe, arguments with `{path}` `{folder}` `{name}` (default `"{path}"`), extensions
+  (or folders), and optionally make it the Enter action for those extensions. Example: `.txt`, `.md` → VS Code.
+
 ### Actions on results
 
 - **App → Open file location** · `done` 2026-11-27. Selects the app's target exe in Explorer; windows have it too. Not
@@ -66,12 +109,13 @@ with providers and actions around it.
   matches show too (`end` also lists "Close window"). Consider prefix and word-start matches only for the short action list.
 - **Folder → Open terminal here** · `done` 2026-11-28, `verify` with the real keyboard. Indexed folders: Terminal here
   (Ctrl+Enter), as administrator (Ctrl+Shift+Enter), PowerShell and Command Prompt here, each with its own "as
-  administrator" row.
+  administrator" row; since grouped under "Open shell here ›" (see Navigation, scopes and settings).
 - **File → Terminal / PowerShell / cmd in its folder, also as administrator** · `done` 2026-11-28, `verify` with the real
   keyboard (user request). Same rows as folders, opened in the file's own folder. Checked through the pipe only.
 - **Aliases for files and folders** · `idea` · S. Index results use `path:` usage keys, which `AliasBook` and its
   "Add alias…" rows don't know yet.
 - **Open with… for files** · `idea` · S. The Windows "Open with" dialog, and the app list for the file's extension.
+  Superseded by "Open with, including custom apps" above.
 - **`.sln` / `.slnx` → Open with Rider, Visual Studio or VS Code** · `idea` · S–M. Detect which IDEs are installed. Depends on file results (recent files below).
 - **Aliases** · `done` 2026-11-27. Extra names for apps, folders and commands, so `codex` finds ChatGPT. Ctrl+K › Add alias…
   (text entry, can move an alias from another result), Aliases › to remove; exact and prefix matching only; a tag shows

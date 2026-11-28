@@ -54,7 +54,16 @@ Every result has a list of actions. **Enter** runs the first (the default). **Ct
 of the query, opens the list for the selected result in place of the results; the search box shows the result as a chip
 (`[icon] Claude › Move to workspace`) and filters the list as you type. Enter runs the selected action, → or Enter opens a
 submenu (`›`), ← (empty filter) or Esc goes back a level, and Esc on the results closes the launcher. The footer under
-the results is built from the selected result's actions: the default, Ctrl+K, and every action with a shortcut.
+the results is built from the selected result's actions: the default, Ctrl+K, and every action with a shortcut (for a
+submenu without a summary hint, such as Open shell ›, its rows' shortcuts).
+
+- **The filter also searches one level of submenus.** A submenu row shows as `Open shell here › Terminal as administrator`
+  (or just its own title when that already starts with the submenu's, as in `Move to workspace 13`), and must match at
+  least as a substring. So `admin` lists the three elevated shells, and `13` on a window lists "Move to workspace 13".
+- **Ctrl+1…9 and Ctrl+0 run the first ten rows** of the list as shown (filtered or not), numbered on the left; with Shift
+  they run the row's Shift variant. A submenu row opens, and End task is only armed (↵ confirms). Inside the list this
+  replaces the result-list shortcuts on digits, so Ctrl+N labels aren't shown on rows; in a workspace submenu row N is still
+  workspace N. On the result list Ctrl+1…9 still sends to a workspace.
 
 | Result | Actions (shortcut) |
 |---|---|
@@ -62,8 +71,8 @@ the results is built from the selected result's actions: the default, Ctrl+K, an
 | Window | Focus window (↵) · Bring to this workspace (Ctrl+↵, when elsewhere) · Move to workspace › (Ctrl+1–9, +Shift stay) · Open file location · Close window (Ctrl+W) · End task |
 | With `@N` in the query | App: Open on workspace N (↵, Shift+↵ stay); window: Move to workspace N (↵, Shift+↵ stay) |
 | Folder, command | Their default action (Open in File Explorer / Run) |
-| Indexed folder | Open (↵) · Open Terminal here (Ctrl+↵) · … as administrator (Ctrl+Shift+↵) · Open PowerShell 7 here · … as administrator · Open Command Prompt here · … as administrator · Open file location · Copy path |
-| Indexed file | Open (↵) · Open file location (Ctrl+↵) · Run as administrator (Ctrl+Shift+↵; `.exe`, `.bat`, `.cmd`, `.com`, `.msi`) · Open Terminal / PowerShell 7 / Command Prompt in its folder, each also as administrator · Copy path |
+| Indexed folder | Open (↵) · Open shell here › (Terminal Ctrl+↵, Terminal as administrator Ctrl+Shift+↵, PowerShell 7, Command Prompt, each also as administrator) · Open file location · Copy path |
+| Indexed file | Open (↵) · Open file location (Ctrl+↵) · Run as administrator (Ctrl+Shift+↵; `.exe`, `.bat`, `.cmd`, `.com`, `.msi`) · Open shell in its folder › (the same six rows) · Copy path |
 | App, folder, command | Also: Add alias… (text entry) · Aliases › (when it has any; Enter on one removes it) |
 | Go to workspace, browser tab | One default action each |
 
@@ -102,9 +111,9 @@ the results is built from the selected result's actions: the default, Ctrl+K, an
   folder is the working directory (`wt -d .`, nothing to quote); elevated starts ignore that, so then the folder goes on the
   command line (`wt -d "D:\\"`, `pwsh -NoExit -Command "Set-Location -LiteralPath '…'"`, `cmd /k cd /d "…"`). Elevated
   starts run off the UI thread, like Run as administrator; a cancelled UAC prompt is logged, not an error.
-  Folders and files share the rows (`ActionKits.ShellActions`): every shell has a normal row and an "… as administrator"
-  row, so typing `admin` in Ctrl+K lists all elevated ones; Shift+↵ on a normal row also runs its elevated twin. Files open
-  the shell in the file's own folder, so two `GlazeIndex.exe` results open in their two different folders.
+  Folders and files share one submenu row (`ActionKits.ShellMenu`): every shell has a normal row and an "… as administrator"
+  row; typing `admin` in Ctrl+K lists all elevated ones (the filter searches submenus); Shift+↵ on a normal row also runs its
+  elevated twin. Files open the shell in the file's own folder, so two `GlazeIndex.exe` results open in their two different folders.
 - Close, End task, Open file location and the alias actions don't count towards frecency; workspace actions record usage for the target workspace.
 - **Text-entry levels and keep-open actions** are general: a `ResultAction` with `Input` builds its rows from the typed text,
   `ActionFlags.KeepOpen` runs an action without hiding the launcher (then searches `ThenQuery`, or rebuilds the list), and
@@ -333,12 +342,23 @@ agent's shell only sees its redirected copy.
 - `.glzr\launcher\before-run-as-admin-20261128-104516\`: before Run as administrator
 - `.glzr\launcher\before-list-wrap-20261128-112255\`: before ↑ ↓ wrap-around
 - `.glzr\launcher\before-file-shells-20261128-120346\`: before shells in a file's folder
+- `.glzr\launcher\before-action-list-20261128-155246\`: before the shell submenu, numbered rows and bold matches
 
 ## Change log
 
 Newest first.
 
 ### 2026-11-28
+- **Shell submenu, numbered action rows, bold matches** (user requests, the small items of the "Navigation, scopes and
+  settings" proposal in `backlog.md`). `ResultActions.cs`: `ShellMenu` replaces the six shell rows with one "Open shell
+  here ›" / "Open shell in its folder ›" row (Ctrl+↵ / Ctrl+Shift+↵ on folders still work, found in the submenu).
+  `MainWindow.xaml.cs`: the action filter also searches one submenu level (substring or better), Ctrl+1…9/0 run the rows
+  as numbered (`RunNumberedRow`), Ctrl+digit labels are hidden in the list, and the result footer lists a hint-less
+  submenu's shortcuts. `MainWindow.xaml`: a number column. `HighlightedTextBlock.cs`: matched letters Bold (were SemiBold).
+  Installed through the supervisor. Checked with pipe snapshots: a folder shows 4 numbered rows; `admin` lists the three
+  elevated shells with the path prefix; Ctrl+2 opens the shell submenu; a file's row carries its folder; `13` on a window
+  finds "Move to workspace 13"; the footer reads `Ctrl+↵ Terminal   Ctrl+Shift+↵ Terminal as administrator`. The user
+  confirmed the keys work with the real keyboard on a folder.
 - **Terminal, PowerShell and Command Prompt in a file's folder, each also as administrator** (user request: two
   `GlazeIndex.exe` results, one in Program Files and one in the build folder, each needs a terminal in its own folder).
   `ResultActions.cs`: new `ShellActions` builds the shell rows for both folders and files; every elevated variant is now a

@@ -290,6 +290,16 @@ public partial class MainWindow : Window
             if (action.IsInert) continue; // e.g. "Run as administrator" on a Store app: listed in Ctrl+K with the reason
             if (action.Shortcut is { } chord) parts.Add($"{chord.Label} {action.Title}");
             else if (action.IsSubmenu && action.Hint is { } hint) parts.Add($"{hint} {action.Title}");
+            else if (action.Children is { } children)
+            {
+                // A submenu without a summary hint (Open shell ›): list its own shortcuts.
+                try
+                {
+                    foreach (var child in children())
+                        if (!child.IsInert && child.Shortcut is { } inner) parts.Add($"{inner.Label} {child.Title}");
+                }
+                catch (Exception e) { Log.Error($"footer {action.Title}", e); }
+            }
         }
         if (actions[0].Shifted is not null) parts.Add("+Shift: stay");
         Footer.Text = string.Join("   ", parts);
@@ -438,15 +448,35 @@ public partial class MainWindow : Window
         }
         else
         {
-            rows = level.Actions
-                .Select((action, i) => (Action: action, Index: i, Match: Fuzzy.Match(filter, action.Title)))
-                .Where(entry => entry.Match.Found)
-                .OrderByDescending(entry => entry.Match)
-                .ThenBy(entry => entry.Index)
-                .Select(entry => new ActionRow(entry.Action, top && entry.Index == 0, Fuzzy.FindPositions(filter, entry.Action.Title)))
+            // This level's rows, plus the rows of its submenus ("admin" finds Open shell › Terminal as administrator).
+            // Submenu rows must match at least as a substring, so loose subsequence matches don't flood the list.
+            var candidates = new List<(ResultAction Action, string Title, int Order, bool Nested)>();
+            for (int i = 0; i < level.Actions.Count; i++)
+            {
+                var action = level.Actions[i];
+                candidates.Add((action, action.Title, i * 100, false));
+                if (action.Input is not null || action.Children is not { } children) continue;
+                IReadOnlyList<ResultAction> inner;
+                try { inner = children(); }
+                catch (Exception e) { Log.Error($"submenu {action.Title}", e); continue; }
+                for (int j = 0; j < inner.Count; j++)
+                {
+                    var child = inner[j];
+                    var title = child.Title.StartsWith(action.Title, StringComparison.OrdinalIgnoreCase)
+                        ? child.Title : $"{action.Title} › {child.Title}";
+                    candidates.Add((child, title, i * 100 + j + 1, true));
+                }
+            }
+            rows = candidates
+                .Select(c => (c.Action, c.Title, c.Order, Match: Fuzzy.Match(filter, c.Title), c.Nested))
+                .Where(c => c.Match.Found && (!c.Nested || c.Match.Quality >= MatchQuality.Substring))
+                .OrderByDescending(c => c.Match)
+                .ThenBy(c => c.Order)
+                .Select(c => new ActionRow(c.Action, top && c.Order == 0, Fuzzy.FindPositions(filter, c.Title), c.Title))
                 .ToList();
         }
 
+        for (int i = 0; i < rows.Count && i < 10; i++) rows[i].Number = (i + 1) % 10;
         ActionList.ItemsSource = rows;
         if (rows.Count > 0) ActionList.SelectedIndex = 0;
         CrumbText.Text = string.Join("  ›  ", _levels.Select(l => l.Title));
@@ -473,6 +503,7 @@ public partial class MainWindow : Window
         }
         var parts = new List<string> { row.Action.IsSubmenu ? "↵ or → open" : "↵ run" };
         if (row.Action.Shifted is { } shifted) parts.Add("Shift+↵ " + shifted.Title);
+        if (ActionList.Items.Count > 1) parts.Add("Ctrl+1‒0 row");
         // ← only goes back with an empty box; in a text-entry level it moves the caret otherwise.
         if (!input || QueryBox.Text.Length == 0) parts.Add("← back");
         parts.Add("Esc back");
@@ -618,7 +649,25 @@ public partial class MainWindow : Window
                 return true;
         }
 
+        if (ctrl && InActionMode && KeyChord.From(key, mods).Key is >= Key.D0 and <= Key.D9 and var digit)
+        {
+            RunNumberedRow(digit - Key.D0, shift);
+            return true;
+        }
+
         return ctrl && TryShortcut(key, mods);
+    }
+
+    /// <summary>Ctrl+1‒9 and Ctrl+0 in the action list: run (or open, or arm) the row with that number, as Enter would.</summary>
+    private void RunNumberedRow(int number, bool shift)
+    {
+        int index = number == 0 ? 9 : number - 1;
+        if (_actionItem is not { } owner || index >= ActionList.Items.Count || ActionList.Items[index] is not ActionRow row) return;
+        ActionList.SelectedIndex = index;
+        ActionList.ScrollIntoView(row);
+        UpdateFooter();
+        var action = shift && row.Action.Shifted is { } shifted ? shifted : row.Action;
+        _ = Execute(owner, action, row);
     }
 
     /// <summary>Moves the selection. With <paramref name="wrap"/> (↑ ↓ Tab), stepping past either end goes to the other
@@ -652,11 +701,16 @@ public partial class MainWindow : Window
 }
 
 /// <summary>One row of the action list.</summary>
-internal sealed class ActionRow(ResultAction action, bool isDefault, int[]? matches) : INotifyPropertyChanged
+internal sealed class ActionRow(ResultAction action, bool isDefault, int[]? matches, string? title = null) : INotifyPropertyChanged
 {
     private bool _armed;
 
     public ResultAction Action => action;
+
+    /// <summary>Ctrl+N runs this row (1‒9, then 0 for the tenth); null past the tenth.</summary>
+    public int? Number { get; set; }
+    public string NumberLabel => Number?.ToString() ?? "";
+    public Visibility NumberVisibility => Number is null ? Visibility.Collapsed : Visibility.Visible;
     public string Glyph => action.Glyph;
     public string Detail => action.Detail ?? "";
     public Visibility DetailVisibility => Detail.Length > 0 && !IsArmed ? Visibility.Visible : Visibility.Collapsed;
@@ -666,12 +720,16 @@ internal sealed class ActionRow(ResultAction action, bool isDefault, int[]? matc
     public string ShortcutLabel => action.IsSubmenu
         ? (action.Hint is { } hint ? hint + "  ›" : "›")
         : action.IsInert ? ""
-        : action.Shortcut?.Label ?? action.Hint ?? (isDefault ? "↵" : "");
+        // Ctrl+digit labels are left out: in this list Ctrl+N runs row N, shown by the number on the left.
+        : (action.Shortcut is { } chord && !IsCtrlDigit(chord) ? chord.Label : null) ?? action.Hint ?? (isDefault ? "↵" : "");
+
+    private static bool IsCtrlDigit(KeyChord chord) =>
+        chord.Key is >= Key.D0 and <= Key.D9 && chord.Modifiers == ModifierKeys.Control;
     public Visibility ShortcutVisibility => ShortcutLabel.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     public HighlightedText TitleText => IsArmed
         ? new(action.ConfirmTitle ?? "Press ↵ again: " + action.Title, null)
-        : new(action.Title, matches);
+        : new(title ?? action.Title, matches);
 
     public bool IsArmed
     {
