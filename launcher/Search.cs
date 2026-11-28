@@ -20,13 +20,14 @@ internal enum SearchScope { All, Apps, Windows, Tabs, Files, Commands }
 internal static class Scopes
 {
     /// <summary>The chips in order, with the prefix that selects each (PowerToys Run's keywords where they fit:
-    /// <c>.</c> programs, <c>&lt;</c> Window Walker, <c>?</c> file search; <c>&gt;</c> commands as in VS Code).</summary>
+    /// <c>.</c> programs, <c>&lt;</c> Window Walker, <c>?</c> file search; <c>&gt;</c> commands as in VS Code; <c>^</c> tabs,
+    /// which PowerToys doesn't have).</summary>
     public static readonly (SearchScope Scope, string Name, char? Prefix, string Placeholder)[] List =
     [
         (SearchScope.All, "All", null, "Apps, windows, files, commands…   @3 → workspace 3"),
         (SearchScope.Apps, "Apps", '.', "Search apps…"),
         (SearchScope.Windows, "Windows", '<', "Search open windows and browser tabs…"),
-        (SearchScope.Tabs, "Tabs", null, "Search browser tabs…"),
+        (SearchScope.Tabs, "Tabs", '^', "Search browser tabs…"),
         (SearchScope.Files, "Files", '?', "Search files and folders…"),
         (SearchScope.Commands, "Commands", '>', "Search commands…"),
     ];

@@ -69,7 +69,7 @@ keyboard. VS Code's quick open lists every prefix when you type `?`.
   up as noise (`chrome` lists "ACCIDENTALLY Expose Their Own Crimes" by single letters). Require substring or better for
   tabs, at least in the All scope.
 - **Scope chips with prefixes** · `done` 2026-11-28, `verify` with the real keyboard and mouse (user request; prefixes as
-  proposed below: `.` apps, `<` windows and tabs, `?` files, `>` commands; Tabs is a chip without a prefix). The proposal was: A strip under the search box: All · Apps · Windows · Tabs · Files · Folders ·
+  proposed below: `.` apps, `<` windows and tabs, `?` files, `>` commands; `^` tabs, added at the user's request). The proposal was: A strip under the search box: All · Apps · Windows · Tabs · Files · Folders ·
   Commands, each with its prefix in dim text, so it is the always-visible legend. Ctrl+Tab / Ctrl+Shift+Tab switch scope;
   typing a prefix at the start switches too and becomes the chip (it leaves the text box). Prefix characters to agree:
   avoid `@` (workspaces), `\` `:` `%` `~` (paths, planned); for example `>` commands, `<` windows, `/` files and folders.

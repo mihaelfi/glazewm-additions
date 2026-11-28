@@ -309,7 +309,7 @@ public partial class MainWindow : Window
             var scopeName = Scopes.List.First(s => s.Scope == _scope).Name.ToLowerInvariant();
             Footer.Text = (_scope, QueryBox.Text.Length) switch
             {
-                (SearchScope.All, 0) => "Type to search   . apps   < windows and tabs   ? files   > commands   Ctrl+Tab scope   Esc close",
+                (SearchScope.All, 0) => "Type to search   . apps   < windows and tabs   ^ tabs   ? files   > commands   Ctrl+Tab scope   Esc close",
                 (SearchScope.All, _) => "No matches   Esc close",
                 (_, 0) => "Type to search   Backspace all results   Ctrl+Tab scope   Esc close",
                 _ => $"No {scopeName} match   Ctrl+Tab scope   Esc close",

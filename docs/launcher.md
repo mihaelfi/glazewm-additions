@@ -21,9 +21,9 @@ gets pushed updates from GlazeWM instead of polling, and does shell work on one 
   order: Windows (5 rows), Apps (4), Browser tabs (3), Commands (3), Files and folders (5). A section with more ends in a
   "Show all N …" row ("Show more files and folders" for files, whose total the launcher doesn't know); Enter or → on it
   switches to that scope. Each header names its prefix at the right (`? for all`). ↑ ↓ skip the headers.
-- **Scopes and prefixes:** a chip strip under the search box: All · Apps `.` · Windows `<` · Tabs · Files `?` · Commands
-  `>` (PowerToys Run's keywords where they fit; `>` lists commands, as in VS Code). Typing a prefix first in the All scope
-  switches to it and the character leaves the box; Ctrl+Tab / Ctrl+Shift+Tab cycle the chips (Tabs has no prefix); a click
+- **Scopes and prefixes:** a chip strip under the search box: All · Apps `.` · Windows `<` · Tabs `^` · Files `?` · Commands
+  `>` (PowerToys Run's keywords where they fit; `>` lists commands, as in VS Code; `^` for tabs, which PowerToys lacks). Typing a prefix first in the All scope
+  switches to it and the character leaves the box; Ctrl+Tab / Ctrl+Shift+Tab cycle the chips; a click
   on a chip works too; Backspace in an empty box returns to All; opening the launcher starts in All. Windows (`<`) covers
   windows and browser tabs. In a scope, everything matching is one ranked list, and an empty query lists all of it (all
   apps, all commands, all windows and tabs; Files lists recent files and the known folders). The Files scope asks the index
@@ -377,6 +377,8 @@ agent's shell only sees its redirected copy.
 Newest first.
 
 ### 2026-11-28
+- **`^` selects the Tabs scope** (user request; Tabs had no prefix). `Search.cs` (`Scopes.List`) and the All footer.
+  Checked with a pipe snapshot: `^youtube` opens Tabs with the three YouTube tabs.
 - **Sections, scope chips and prefixes** (user request; prefixes agreed with the user after checking PowerToys Run's
   docs). `Search.cs`: `ResultKind`, `SearchScope`, `Scopes` (chips, prefixes, placeholders), `SearchEngine.Search` takes a
   scope and builds the top hit, sections and "Show all" rows, header rows (`ResultItem.IsHeader`, `ScopeLink`).
